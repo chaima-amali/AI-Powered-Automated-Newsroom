@@ -2,8 +2,8 @@
 scraper/parser.py
 ------------------
 HTML → structured article dict.
-Uses newspaper3k as primary extractor (handles Arabic well),
-with BeautifulSoup as fallback using per-source CSS selectors.
+Uses Trafilatura as primary extractor (fast, robust, handles Arabic well),
+with newspaper3k and BeautifulSoup as fallback layers.
 """
 
 import logging
@@ -44,11 +44,51 @@ def extract_article(url: str, source_config: dict) -> dict:
     """
     Download and parse an article page.
     Returns a dict ready for upsert_article().
+    
+    Extraction strategy:
+      1. Trafilatura (primary - fast, robust, great Arabic support)
+      2. newspaper3k (fallback if Trafilatura fails)
+      3. BeautifulSoup with selectors (last resort)
     """
     result = _empty_article(url, source_config)
 
     try:
-        # ── 1. Try newspaper3k (best quality, handles RTL + multilingual) ──
+        # ── 1. Try Trafilatura (BEST - actively maintained, great extraction) ──
+        try:
+            import trafilatura
+            
+            resp = get_session().get(url, timeout=15)
+            resp.raise_for_status()
+            
+            # Extract with metadata
+            extracted = trafilatura.extract(
+                resp.text,
+                include_comments=False,
+                include_tables=True,
+                output_format='json',
+                url=url
+            )
+            
+            if extracted:
+                import json
+                data = json.loads(extracted) if isinstance(extracted, str) else extracted
+                
+                result["title"]        = data.get("title") or result["title"]
+                result["content"]      = data.get("text") or None
+                result["author"]       = data.get("author") or None
+                result["published_at"] = _parse_date(data.get("date")) if data.get("date") else None
+                result["image_url"]    = data.get("image") or None
+                
+                if result["content"] and len(result["content"]) > 200:
+                    result["word_count"]    = len(result["content"].split())
+                    result["scrape_status"] = "success"
+                    logger.debug("Trafilatura OK: %s", url)
+                    return _finalize(result)
+                    
+        except Exception as tf_err:
+            logger.debug("Trafilatura failed (%s), trying newspaper3k: %s", tf_err, url)
+
+        # ── 2. Try newspaper3k (fallback) ──
         try:
             from newspaper import Article as NpArticle
 
@@ -62,7 +102,7 @@ def extract_article(url: str, source_config: dict) -> dict:
             result["image_url"]    = str(np_article.top_image) if np_article.top_image else None
             result["published_at"] = np_article.publish_date
 
-            if result["content"]:
+            if result["content"] and len(result["content"]) > 200:
                 result["word_count"]    = len(result["content"].split())
                 result["scrape_status"] = "success"
                 logger.debug("newspaper3k OK: %s", url)
@@ -71,9 +111,11 @@ def extract_article(url: str, source_config: dict) -> dict:
         except Exception as np_err:
             logger.debug("newspaper3k failed (%s), falling back to BS4: %s", np_err, url)
 
-        # ── 2. BeautifulSoup fallback ──────────────────────────────────────
-        resp = get_session().get(url, timeout=15)
-        resp.raise_for_status()
+        # ── 3. BeautifulSoup fallback ──────────────────────────────────────
+        if 'resp' not in locals():
+            resp = get_session().get(url, timeout=15)
+            resp.raise_for_status()
+            
         soup = BeautifulSoup(resp.text, "html.parser")
 
         # try source-specific selectors first, then generic ones
@@ -159,6 +201,17 @@ def _meta_author(soup: BeautifulSoup) -> Optional[str]:
         if tag and tag.get("content"):
             return tag["content"]
     return None
+
+
+def _parse_date(date_str: str) -> Optional[datetime]:
+    """Parse date string from Trafilatura or meta tags."""
+    if not date_str:
+        return None
+    try:
+        from dateutil import parser as dp
+        return dp.parse(date_str)
+    except Exception:
+        return None
 
 
 def _meta_date(soup: BeautifulSoup) -> Optional[datetime]:

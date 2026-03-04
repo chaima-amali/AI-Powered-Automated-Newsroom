@@ -99,16 +99,18 @@ Audit log — one row per execution.
 
 ```
 run_scraper()
-└── ThreadPoolExecutor(max_workers=8)   ← 8 sources in parallel
-    ├── _process_source(Ennahar)
-    │   └── ThreadPoolExecutor(max_workers=10)  ← 10 articles in parallel
+└── ThreadPoolExecutor(max_workers=10)   ← 10 sources in PARALLEL (SIMULTANEOUS)
+    ├── _process_source(Ennahar)         ← Running concurrently with all others
+    │   └── ThreadPoolExecutor(max_workers=15)  ← 15 articles in PARALLEL
     │       ├── _scrape_and_store(article_1)
     │       ├── _scrape_and_store(article_2)
     │       └── ...
-    ├── _process_source(El Watan)
-    │   └── ThreadPoolExecutor(max_workers=10)
+    ├── _process_source(El Watan)        ← Running concurrently with all others
+    │   └── ThreadPoolExecutor(max_workers=15)
     │       └── ...
-    └── ...  (all sources run simultaneously)
+    └── ...  (all sources run SIMULTANEOUSLY, not sequentially)
+    
+Max concurrent requests = 10 sources × 15 articles = 150 simultaneous HTTP requests
 ```
 
 **Why threads over asyncio?**
@@ -126,22 +128,31 @@ RSS entry
     ├─ RSS has full content (≥300 chars)?  ──YES──► use RSS content directly
     │                                                (no HTTP request needed)
     │
-    └─NO──► newspaper3k.download() + parse()
+    └─NO──► 1. Trafilatura.extract()  (PRIMARY - fast, robust, best for Arabic)
                 │
                 ├─ Success?  ──YES──► structured article dict
                 │
-                └─NO──► BeautifulSoup fallback
+                └─NO──► 2. newspaper3k.download() + parse()  (FALLBACK)
                             │
-                            ├─ Try source-specific CSS selectors (config/sources.py)
-                            └─ Then generic selectors (article, div.content, main…)
+                            ├─ Success?  ──YES──► structured article dict
+                            │
+                            └─NO──► 3. BeautifulSoup fallback  (LAST RESORT)
+                                        │
+                                        ├─ Try source-specific CSS selectors (config/sources.py)
+                                        └─ Then generic selectors (article, div.content, main…)
 ```
 
-**newspaper3k** handles:
-- Arabic (RTL) and French text correctly
+**Trafilatura** (primary) handles:
+- Excellent Arabic (RTL) and multilingual text extraction
+- Superior boilerplate removal (ads, navigation, comments)
+- Fast processing and active maintenance
+- Built-in metadata extraction
+
+**newspaper3k** (fallback) handles:
+- Alternative extraction when Trafilatura fails
 - Author extraction from bylines
 - Publication date from meta tags
 - Main image detection
-- Paywall/stub detection
 
 ---
 

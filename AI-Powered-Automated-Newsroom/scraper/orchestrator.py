@@ -31,11 +31,11 @@ from scraper.parser import extract_article
 logger = logging.getLogger(__name__)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-MAX_WORKERS_SOURCES  = 5        # parallel sources
-MAX_WORKERS_ARTICLES = 10   # parallel article fetches *per source*
-ARTICLES_PER_SOURCE  = 50   # max articles to process per run (None = unlimited)
-MIN_CONTENT_CHARS    = 300  # skip articles shorter than this (ads/stubs)
-DELAY_BETWEEN_REQS   = 0.5  # seconds between requests to the same domain
+MAX_WORKERS_SOURCES  = 10       # parallel sources (concurrent downloads from different websites)
+MAX_WORKERS_ARTICLES = 15       # parallel article fetches *per source*
+ARTICLES_PER_SOURCE  = 50       # max articles to process per run (None = unlimited)
+MIN_CONTENT_CHARS    = 300      # skip articles shorter than this (ads/stubs)
+DELAY_BETWEEN_REQS   = 0.3      # seconds between requests to the same domain (reduced for faster scraping)
 
 
 # ── Stats container ────────────────────────────────────────────────────────────
@@ -53,17 +53,27 @@ def run_scraper() -> RunStats:
     """
     Main entry point. Scrape all sources concurrently.
     Returns aggregated RunStats.
+    
+    Concurrent Architecture:
+      - All sources are scraped SIMULTANEOUSLY (max MAX_WORKERS_SOURCES at once)
+      - Within each source, articles are scraped in PARALLEL (max MAX_WORKERS_ARTICLES)
+      - This means we can have MAX_WORKERS_SOURCES × MAX_WORKERS_ARTICLES concurrent HTTP requests
     """
-    logger.info("═══ Scrape run started — %d sources ═══", len(SOURCES))
+    logger.info("═══ Scrape run started — %d sources (scraping CONCURRENTLY) ═══", len(SOURCES))
+    logger.info("Parallelism: %d sources × %d articles per source = %d max concurrent requests",
+                MAX_WORKERS_SOURCES, MAX_WORKERS_ARTICLES, MAX_WORKERS_SOURCES * MAX_WORKERS_ARTICLES)
     run_id = start_scrape_run(len(SOURCES))
     stats  = RunStats()
 
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS_SOURCES, thread_name_prefix="src") as executor:
+        # Submit ALL sources at once for concurrent execution
         futures = {
             executor.submit(_process_source, source): source["name"]
             for source in SOURCES
         }
+        
+        logger.info("✓ Submitted %d sources for SIMULTANEOUS processing", len(futures))
 
         for future in as_completed(futures):
             source_name = futures[future]
@@ -105,11 +115,13 @@ def _process_source(source: dict) -> dict:
     Full pipeline for one source:
       1. Ensure source exists in DB
       2. Fetch RSS feed entries
-      3. Scrape each article URL concurrently
+      3. Scrape each article URL concurrently (PARALLEL within source)
       4. Upsert to DB
     """
     source_name = source["name"]
     stats = {"fetched": 0, "inserted": 0, "failed": 0}
+    
+    logger.info("▸ Starting source: %s", source_name)
 
     # Register source in DB and attach its id
     source_id = ensure_source(
@@ -130,9 +142,12 @@ def _process_source(source: dict) -> dict:
         entries = entries[:ARTICLES_PER_SOURCE]
 
     stats["fetched"] = len(entries)
+    logger.info("  %s: Processing %d articles CONCURRENTLY (%d workers)", 
+                source_name, len(entries), MAX_WORKERS_ARTICLES)
 
     # Scrape articles concurrently within this source
     with ThreadPoolExecutor(max_workers=MAX_WORKERS_ARTICLES, thread_name_prefix=f"{source_name[:8]}") as executor:
+        # Submit all articles at once for parallel scraping
         futures = {
             executor.submit(_scrape_and_store, entry, source): entry["url"]
             for entry in entries

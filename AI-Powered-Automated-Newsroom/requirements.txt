@@ -8,7 +8,8 @@ beautifulsoup4==4.12.3
 lxml==5.1.0                  # fast BS4 parser
 
 # ── Article extraction (handles RTL, Arabic, multilingual) ─
-newspaper3k==0.2.8
+trafilatura==1.6.4           # primary - fast, robust, actively maintained
+newspaper3k==0.2.8           # fallback
 nltk==3.8.1                  # required by newspaper3k
 
 # ── Database ───────────────────────────────────────────────
