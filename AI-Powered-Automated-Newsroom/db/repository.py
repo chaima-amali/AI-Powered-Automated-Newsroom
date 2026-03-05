@@ -96,3 +96,94 @@ def ensure_source(name: str, rss_url: str, base_url: str, language: str = "ar") 
             (name, rss_url, base_url, language),
         )
         return cur.fetchone()[0]
+
+
+# ── Embedding pipeline helpers ─────────────────────────────────────────────────
+
+def fetch_unprocessed_articles(batch_size: int = 256, offset: int = 0) -> list[dict]:
+    """
+    Return a batch of articles where:
+      - is_processed = FALSE
+      - scrape_status = 'success'
+
+    Returns a list of dicts with keys: id, title, content.
+    Uses LIMIT/OFFSET for cursor-style batching without loading the full table.
+
+    Args:
+        batch_size : maximum rows to fetch in this call
+        offset     : row offset for pagination
+
+    Returns:
+        List of dicts [{id, title, content}, ...]
+    """
+    with get_cursor(dict_cursor=True) as cur:
+        cur.execute(
+            """
+            SELECT id, title, content
+              FROM articles
+             WHERE is_processed = FALSE
+               AND scrape_status = 'success'
+             ORDER BY id          -- stable order for reproducible batching
+             LIMIT %s OFFSET %s
+            """,
+            (batch_size, offset),
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_unprocessed_articles() -> int:
+    """Return the total number of articles yet to be embedded."""
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*)
+              FROM articles
+             WHERE is_processed = FALSE
+               AND scrape_status = 'success'
+            """
+        )
+        return cur.fetchone()[0]
+
+
+def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
+    """
+    Atomically update embedding + cluster_id + is_processed for a batch
+    of articles.
+
+    Each record must have keys: id, embedding, cluster_id.
+
+    Uses psycopg2 executemany with a temporary VALUES list for efficiency —
+    avoids N individual round-trips.
+
+    Args:
+        records : list of dicts [{id, embedding, cluster_id}, ...]
+    """
+    if not records:
+        return
+
+    # Build parameter tuples
+    # embedding is stored as a Python list so psycopg2 can cast it to vector
+    params = [
+        (
+            r["embedding"],          # list[float] → cast to vector in SQL
+            r["cluster_id"],         # int or None for noise points
+            r["id"],                 # WHERE id = %s
+        )
+        for r in records
+    ]
+
+    with get_cursor() as cur:
+        cur.executemany(
+            """
+            UPDATE articles
+               SET embedding     = %s::vector,
+                   cluster_id    = %s,
+                   is_processed  = TRUE,
+                   updated_at    = NOW()
+             WHERE id = %s
+            """,
+            params,
+        )
+
+    logger.info("bulk_update_embeddings_and_clusters: updated %d rows", len(records))
