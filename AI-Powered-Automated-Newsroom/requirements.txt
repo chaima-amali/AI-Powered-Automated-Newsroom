@@ -5,10 +5,13 @@
 requests==2.31.0
 feedparser==6.0.11
 beautifulsoup4==4.12.3
-lxml==5.1.0                  # fast BS4 parser
+lxml>=5.2.2,<7               # fast BS4 parser (compatible with trafilatura 1.12)
 
 # ── Article extraction (handles RTL, Arabic, multilingual) ─
-trafilatura==1.6.4           # primary - fast, robust, actively maintained
+# ENHANCEMENT: upgraded trafilatura from 1.6.4 → 1.12.0
+# Significant Arabic/RTL improvements since 1.6.4 that directly
+# benefit this project. Test on your sources before pinning further.
+trafilatura==1.12.0
 newspaper3k==0.2.8           # fallback
 nltk==3.8.1                  # required by newspaper3k
 
