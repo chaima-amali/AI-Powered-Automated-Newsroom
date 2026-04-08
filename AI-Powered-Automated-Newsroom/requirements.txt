@@ -1,4 +1,4 @@
-# AI Newsroom — Scraper dependencies
+# AI Newsroom — Scraper + Embedding Pipeline dependencies
 # Install: pip install -r requirements.txt
 
 # ── HTTP & HTML parsing ────────────────────────────────────
@@ -23,6 +23,21 @@ python-dateutil==2.9.0
 
 # ── Environment variables ──────────────────────────────────
 python-dotenv==1.0.1
+
+# ── Embedding pipeline ─────────────────────────────────────
+# Local sentence-transformer model (no external API calls)
+sentence-transformers==3.0.1 # all-MiniLM-L6-v2 → 384-dim vectors
+torch==2.3.1                 # CPU-only is fine; install CUDA variant for GPU
+                             # GPU install: pip install torch --index-url https://download.pytorch.org/whl/cu121
+transformers==4.41.2         # required by sentence-transformers
+huggingface-hub==0.23.4      # model download/cache management
+
+# ── Clustering ─────────────────────────────────────────────
+scikit-learn==1.5.0          # DBSCAN + cosine metric
+numpy==1.26.4                # array operations
+
+# ── pgvector support ───────────────────────────────────────
+pgvector==0.3.2              # psycopg2 adapter for the vector type
 
 # ── Dev / testing ──────────────────────────────────────────
 pytest==8.1.0
