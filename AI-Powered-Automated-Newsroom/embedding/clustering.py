@@ -13,9 +13,9 @@ cosine distance = 1 - dot_product, which maps neatly onto
 DBSCAN's eps threshold.
 
 Tune via environment variables:
-  DBSCAN_EPS          (float, default 0.25)   — max cosine distance for a point to
-                                                be considered a neighbour
-  DBSCAN_MIN_SAMPLES  (int,   default 3)       — min cluster size
+    DBSCAN_EPS          (float, default 0.20)   — max cosine distance for a point to
+                                                                                                be considered a neighbour
+    DBSCAN_MIN_SAMPLES  (int,   default 2)       — min cluster size
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ from sklearn.cluster import DBSCAN
 logger = logging.getLogger(__name__)
 
 # ── Tuneable parameters ────────────────────────────────────────────────────────
-_EPS: float = float(os.environ.get("DBSCAN_EPS", 0.25))
-_MIN_SAMPLES: int = int(os.environ.get("DBSCAN_MIN_SAMPLES", 3))
+_EPS: float = float(os.environ.get("DBSCAN_EPS", 0.20))
+_MIN_SAMPLES: int = int(os.environ.get("DBSCAN_MIN_SAMPLES", 2))
 
 
 def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:

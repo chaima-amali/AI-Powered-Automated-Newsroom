@@ -35,6 +35,7 @@ huggingface-hub==0.23.4      # model download/cache management
 # ── Clustering ─────────────────────────────────────────────
 scikit-learn==1.5.0          # DBSCAN + cosine metric
 numpy==1.26.4                # array operations
+matplotlib==3.9.2             # cluster report generation
 
 # ── pgvector support ───────────────────────────────────────
 pgvector==0.3.2              # psycopg2 adapter for the vector type

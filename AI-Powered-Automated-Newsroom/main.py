@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Load .env file before anything else
 
-from db.connection import close_pool, init_pool
+from db.connection import close_pool, has_db_settings, init_pool
 from scraper.orchestrator import run_scraper
 from utils.logging_config import setup_logging
 
@@ -36,10 +36,8 @@ def main() -> None:
     args = parser.parse_args()
 
     # Validate required env vars early
-    required_env = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"]
-    missing = [k for k in required_env if not os.environ.get(k)]
-    if missing:
-        logger.critical("Missing required environment variables: %s", ", ".join(missing))
+    if not has_db_settings():
+        logger.critical("Missing required database environment variables")
         logger.critical("Copy .env.example → .env and fill in your credentials.")
         sys.exit(1)
 

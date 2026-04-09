@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # must happen before any db imports
 
-from db.connection import close_pool, init_pool
+from db.connection import close_pool, has_db_settings, init_pool
 from db.repository import count_unprocessed_articles
 from utils.logging_config import setup_logging
 
@@ -54,12 +54,9 @@ def main() -> None:
     args = parser.parse_args()
 
     # ── Validate required env vars ─────────────────────────────────────────────
-    required_env = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"]
-    missing = [k for k in required_env if not os.environ.get(k)]
-    if missing:
+    if not has_db_settings():
         logger.critical(
-            "Missing required environment variables: %s  — check your .env file.",
-            ", ".join(missing),
+            "Missing required database environment variables — check your .env file."
         )
         sys.exit(1)
 

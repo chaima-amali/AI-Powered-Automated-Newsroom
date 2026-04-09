@@ -100,33 +100,38 @@ def ensure_source(name: str, rss_url: str, base_url: str, language: str = "ar") 
 
 # ── Embedding pipeline helpers ─────────────────────────────────────────────────
 
-def fetch_unprocessed_articles(batch_size: int = 256, offset: int = 0) -> list[dict]:
+def fetch_unprocessed_articles(batch_size: int = 256, after_id: int = 0) -> list[dict]:
     """
     Return a batch of articles where:
-      - is_processed = FALSE
-      - scrape_status = 'success'
+        - is_processed = FALSE
+        - scrape_status = 'success'
 
-    Returns a list of dicts with keys: id, title, content.
-    Uses LIMIT/OFFSET for cursor-style batching without loading the full table.
+    Uses keyset pagination on id so the scan is stable and efficient.
 
     Args:
         batch_size : maximum rows to fetch in this call
-        offset     : row offset for pagination
+        after_id   : fetch rows with id > after_id
 
     Returns:
-        List of dicts [{id, title, content}, ...]
+        List of dicts [{id, title, content, summary, article_date}, ...]
     """
     with get_cursor(dict_cursor=True) as cur:
         cur.execute(
             """
-            SELECT id, title, content
+            SELECT
+                id,
+                title,
+                content,
+                                summary,
+                COALESCE(published_at::date, scraped_at::date) AS article_date
               FROM articles
              WHERE is_processed = FALSE
                AND scrape_status = 'success'
-             ORDER BY id          -- stable order for reproducible batching
-             LIMIT %s OFFSET %s
+               AND id > %s
+             ORDER BY id
+             LIMIT %s
             """,
-            (batch_size, offset),
+            (after_id, batch_size),
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
@@ -157,10 +162,31 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
     avoids N individual round-trips.
 
     Args:
-        records : list of dicts [{id, embedding, cluster_id}, ...]
+        records : list of dicts [{id, embedding, cluster_id, article_date}, ...]
     """
     if not records:
         return
+
+    # 1. Insert/update the clusters table first
+    cluster_dates = {}
+    for record in records:
+        cid = record.get("cluster_id")
+        if cid is not None and cid != -1:
+            if cid not in cluster_dates:
+                cluster_dates[cid] = record.get("article_date")
+
+    if cluster_dates:
+        with get_cursor() as cur:
+            for cluster_id, article_date in cluster_dates.items():
+                cur.execute(
+                    """
+                    INSERT INTO clusters (cluster_id, article_date)
+                    VALUES (%s, %s)
+                    ON CONFLICT (cluster_id) DO UPDATE
+                    SET article_count = (SELECT COUNT(*) FROM articles WHERE cluster_id = %s)
+                    """,
+                    (cluster_id, article_date, cluster_id),
+                )
 
     # Build parameter tuples
     # embedding is stored as a Python list so psycopg2 can cast it to vector
@@ -187,3 +213,47 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
         )
 
     logger.info("bulk_update_embeddings_and_clusters: updated %d rows", len(records))
+
+
+def get_cluster_info(cluster_id: int) -> dict | None:
+    """Fetch metadata about a cluster."""
+    with get_cursor(dict_cursor=True) as cur:
+        cur.execute(
+            "SELECT * FROM clusters WHERE cluster_id = %s",
+            (cluster_id,),
+        )
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_articles_in_cluster(cluster_id: int) -> list[dict]:
+    """Fetch all articles in a given cluster."""
+    with get_cursor(dict_cursor=True) as cur:
+        cur.execute(
+            """
+            SELECT id, title, content, cluster_id, is_processed
+              FROM articles
+             WHERE cluster_id = %s
+             ORDER BY id
+            """,
+            (cluster_id,),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
+
+
+def fetch_processed_article_samples(limit: int = 5) -> list[dict]:
+    """Return a small sample of processed articles for verification output."""
+    with get_cursor(dict_cursor=True) as cur:
+        cur.execute(
+            """
+            SELECT id, cluster_id, embedding, COALESCE(published_at::date, scraped_at::date) AS article_date
+              FROM articles
+             WHERE is_processed = TRUE
+             ORDER BY id
+             LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]

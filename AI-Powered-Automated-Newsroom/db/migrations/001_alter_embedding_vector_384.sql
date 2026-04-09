@@ -1,12 +1,12 @@
 -- ============================================================
--- Migration 001 — Change embedding column to vector(384)
+-- Migration 001 — Change embedding column to vector(1536)
 -- ============================================================
 -- Run this ONCE in the Supabase SQL Editor (or psql) before
 -- executing the embedding pipeline for the first time.
 --
 -- Why 384?
 --   sentence-transformers/all-MiniLM-L6-v2 produces 384-dim vectors.
---   Storing them as vector(384) enables pgvector index operators (<=>).
+--   Storing them as vector(1536) keeps parity with the current database schema.
 --
 -- Step 1: Ensure the pgvector extension is installed
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -18,7 +18,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 ALTER TABLE articles DROP COLUMN IF EXISTS embedding;
 
 -- Step 3: Add embedding column sized for all-MiniLM-L6-v2
-ALTER TABLE articles ADD COLUMN embedding vector(384);
+ALTER TABLE articles ADD COLUMN embedding vector(1536);
 
 -- Step 4: Create an HNSW index for fast approximate nearest-neighbour search.
 --         Cosine distance (<=>)  matches the L2-normalised vectors we store.

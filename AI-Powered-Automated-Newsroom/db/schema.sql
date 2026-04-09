@@ -7,6 +7,18 @@
 CREATE EXTENSION IF NOT EXISTS pgvector;
 
 -- ============================================================
+-- CLUSTERS TABLE — semantic article clusters by date
+-- ============================================================
+CREATE TABLE IF NOT EXISTS clusters (
+    cluster_id      INT PRIMARY KEY,
+    article_date    DATE NOT NULL,
+    article_count   INT DEFAULT 0,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_clusters_date ON clusters (article_date DESC);
+
+-- ============================================================
 -- SOURCES TABLE — registered newspapers/journals
 -- ============================================================
 CREATE TABLE IF NOT EXISTS sources (
@@ -55,8 +67,8 @@ CREATE TABLE IF NOT EXISTS articles (
     error_message    TEXT,                          -- populated on scrape failure
 
     -- AI pipeline fields (used in later steps)
-    embedding        vector(1536),                  -- OpenAI text-embedding-3-small
-    cluster_id       INT,
+    embedding        vector(1536),                  -- embedding vector
+    cluster_id       INT REFERENCES clusters(cluster_id) ON DELETE SET NULL,
     is_processed     BOOLEAN DEFAULT FALSE          -- has been through AI pipeline
 );
 

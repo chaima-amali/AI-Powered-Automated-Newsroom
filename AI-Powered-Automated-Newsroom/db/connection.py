@@ -34,18 +34,37 @@ DB_POOL_ACQUIRE_RETRIES = int(os.environ.get("DB_POOL_ACQUIRE_RETRIES", 40))
 DB_POOL_ACQUIRE_BACKOFF_SEC = float(os.environ.get("DB_POOL_ACQUIRE_BACKOFF_SEC", 0.1))
 
 
+def _env(*names: str, default: str | None = None) -> str | None:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return default
+
+
 def _build_dsn() -> dict:
     return {
-        # FIX 1: Removed credential hints from all comments.
-        # Values come exclusively from environment variables — see .env file.
-        "dbname":          os.environ["DB_NAME"],
-        "user":            os.environ["DB_USER"],
-        "password":        os.environ["DB_PASSWORD"],
-        "host":            os.environ["DB_HOST"],
-        "port":            int(os.environ.get("DB_PORT", 5432)),
+        "dbname": _env("DB_NAME", "PGDATABASE", "dbname") or os.environ["DB_NAME"],
+        "user": _env("DB_USER", "PGUSER", "user") or os.environ["DB_USER"],
+        "password": _env("DB_PASSWORD", "PGPASSWORD", "password") or os.environ["DB_PASSWORD"],
+        "host": _env("DB_HOST", "PGHOST", "host") or os.environ["DB_HOST"],
+        "port": int(_env("DB_PORT", "PGPORT", "port", default="5432")),
+        "sslmode": "require",
         "connect_timeout": 10,
-        "options":         "-c statement_timeout=30000",
+        "options": "-c statement_timeout=30000",
     }
+
+
+def has_db_settings() -> bool:
+    return all(
+        _env(*names) is not None
+        for names in (
+            ("DB_NAME", "PGDATABASE", "dbname"),
+            ("DB_USER", "PGUSER", "user"),
+            ("DB_PASSWORD", "PGPASSWORD", "password"),
+            ("DB_HOST", "PGHOST", "host"),
+        )
+    )
 
 
 def init_pool(minconn: int | None = None, maxconn: int | None = None) -> None:
