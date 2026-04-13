@@ -1,13 +1,3 @@
-"""
-main.py
---------
-Entry point for the AI Newsroom scraper.
-
-Usage:
-    python main.py                          # run once
-    python main.py --schedule 60            # run every 60 minutes
-    python main.py --sources ennahar tsa    # run specific sources only
-"""
 
 import argparse
 import logging

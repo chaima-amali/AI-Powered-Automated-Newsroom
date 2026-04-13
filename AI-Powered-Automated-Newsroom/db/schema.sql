@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS articles (
     source_id        INT REFERENCES sources(id) ON DELETE SET NULL,
     source_name      VARCHAR(255),                  -- denormalized for query speed
     url              TEXT NOT NULL UNIQUE,
-    section          VARCHAR(100),                   -- e.g. "politique", "société"
+    section          TEXT,                   -- e.g. "politique", "société"
 
     -- Dates
     published_at     TIMESTAMPTZ,
