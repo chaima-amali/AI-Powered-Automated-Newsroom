@@ -28,8 +28,11 @@ ALTER TABLE articles ADD COLUMN embedding vector(1536);
 ALTER TABLE articles DROP COLUMN embedding_old;
 
 -- ============================================================
--- 3. Add foreign key constraint to clusters table
+-- 3. Ensure articles.cluster_id exists and add FK to clusters table
 -- ============================================================
+ALTER TABLE articles
+ADD COLUMN IF NOT EXISTS cluster_id INT;
+
 -- First ensure the constraint doesn't already exist
 ALTER TABLE articles
 DROP CONSTRAINT IF EXISTS articles_cluster_id_fkey;

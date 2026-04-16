@@ -10,7 +10,7 @@ Usage examples:
 
 Environment variables (set in .env):
     DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
-    EMBEDDING_MODEL         (default: sentence-transformers/all-MiniLM-L6-v2)
+    EMBEDDING_MODEL         (default: sentence-transformers/paraphrase-multilingual-mpnet-base-v2)
     EMBEDDING_FETCH_BATCH   (default: 256)  rows fetched from DB per iteration
     EMBEDDING_ENCODE_BATCH  (default: 64)   sentences per model forward pass
     EMBEDDING_MAX_WORDS     (default: 500)  words used per article
@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -51,6 +52,11 @@ def main() -> None:
         action="store_true",
         help="Print the number of pending articles and exit without processing",
     )
+    parser.add_argument(
+        "--date",
+        type=str,
+        help="Process only this publication date (YYYY-MM-DD). Defaults to today.",
+    )
     args = parser.parse_args()
 
     # ── Validate required env vars ─────────────────────────────────────────────
@@ -62,10 +68,11 @@ def main() -> None:
 
     # ── Dry-run mode ───────────────────────────────────────────────────────────
     if args.dry_run:
+        target_date = args.date or datetime.now(timezone.utc).date().isoformat()
         init_pool()
-        pending = count_unprocessed_articles()
+        pending = count_unprocessed_articles(target_date=target_date)
         close_pool()
-        logger.info("DRY RUN — articles pending embedding: %d", pending)
+        logger.info("DRY RUN — date=%s pending articles: %d", target_date, pending)
         return
 
     # ── Import pipeline here so the model isn't loaded during --dry-run ───────
@@ -85,7 +92,7 @@ def main() -> None:
                 )
                 time.sleep(args.schedule * 60)
         else:
-            summary = run_pipeline()
+            summary = run_pipeline(process_date=args.date)
             logger.info("Summary: %s", summary)
     except KeyboardInterrupt:
         logger.info("Interrupted by user — shutting down gracefully.")

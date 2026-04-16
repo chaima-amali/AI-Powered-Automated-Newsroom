@@ -26,7 +26,7 @@ python-dotenv==1.0.1
 
 # ── Embedding pipeline ─────────────────────────────────────
 # Local sentence-transformer model (no external API calls)
-sentence-transformers==3.0.1 # all-MiniLM-L6-v2 → 384-dim vectors
+sentence-transformers==3.0.1 # multilingual sentence transformers (e.g., LaBSE / m-MPNet)
 torch==2.3.1                 # CPU-only is fine; install CUDA variant for GPU
                              # GPU install: pip install torch --index-url https://download.pytorch.org/whl/cu121
 transformers==4.41.2         # required by sentence-transformers

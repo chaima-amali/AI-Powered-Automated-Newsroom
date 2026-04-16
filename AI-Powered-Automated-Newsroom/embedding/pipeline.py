@@ -1,24 +1,17 @@
-"""
-embedding/pipeline.py
-----------------------
-Orchestrates the full embedding + clustering pipeline.
-
-The pipeline now works in date groups so articles published on the same day
-are clustered together. This keeps clusters date-local, which matches the
-newsroom use case and makes the result easier to reason about.
-"""
+"""End-to-end embedding and clustering pipeline for daily news articles."""
 
 from __future__ import annotations
 
-import ast
 import logging
 import os
 import time
 from collections import defaultdict
+from datetime import date, datetime
 from pathlib import Path
-from typing import DefaultDict, Generator
+from typing import DefaultDict, Iterable
 
 import numpy as np
+from sklearn.decomposition import PCA
 
 from db.repository import (
     bulk_update_embeddings_and_clusters,
@@ -26,98 +19,137 @@ from db.repository import (
     fetch_processed_article_samples,
     fetch_unprocessed_articles,
 )
-from db.connection import get_cursor
 from embedding.clustering import cluster_embeddings
 from embedding.generator import build_text, embed_texts
 
 logger = logging.getLogger(__name__)
 
-# ── Tuneable knobs (override via environment variables) ────────────────────────
 _FETCH_BATCH: int = int(os.environ.get("EMBEDDING_FETCH_BATCH", 256))
 _ENCODE_BATCH: int = int(os.environ.get("EMBEDDING_ENCODE_BATCH", 64))
-_WRITE_BATCH: int = 128
-_REPORT_PATH = Path(os.environ.get("EMBEDDING_CLUSTER_REPORT", "artifacts/cluster_report.png"))
+_ALLOWED_LANGUAGES = tuple(
+    lang.strip().lower()
+    for lang in os.environ.get("EMBEDDING_LANGUAGES", "ar,fr").split(",")
+    if lang.strip()
+)
+_MODEL_VERSION = "intfloat/multilingual-e5-base"
+_REPORT_DIR = Path(os.environ.get("EMBEDDING_REPORT_DIR", "artifacts"))
 
 
-def _iter_batches() -> Generator[list[dict], None, None]:
-    """Yield successive batches of unprocessed articles using id keyset pagination."""
+def _resolve_target_date(process_date: date | str | None) -> date | None:
+    if process_date is None:
+        # Default to daily runs for today's publication date.
+        return datetime.utcnow().date()
+    if isinstance(process_date, date):
+        return process_date
+    return datetime.strptime(process_date, "%Y-%m-%d").date()
+
+
+def _iter_batches(process_date: date | None) -> Iterable[list[dict]]:
     after_id = 0
     while True:
-        batch = fetch_unprocessed_articles(batch_size=_FETCH_BATCH, after_id=after_id)
+        batch = fetch_unprocessed_articles(
+            batch_size=_FETCH_BATCH,
+            after_id=after_id,
+            target_date=process_date,
+            allowed_languages=_ALLOWED_LANGUAGES,
+        )
         if not batch:
             break
         yield batch
-        after_id = batch[-1]["id"]
+        after_id = int(batch[-1]["id"])
 
 
 def _article_date_key(row: dict) -> str:
-    article_date = row.get("article_date")
-    if article_date is None:
-        return "unknown-date"
-    if hasattr(article_date, "isoformat"):
-        return article_date.isoformat()
-    return str(article_date)
+    raw = row.get("article_date")
+    if hasattr(raw, "isoformat"):
+        return raw.isoformat()
+    return str(raw)
 
 
-def _preview_embedding(embedding: object) -> list[float]:
-    if isinstance(embedding, str):
-        try:
-            parsed = ast.literal_eval(embedding)
-        except Exception:
-            return []
-        if isinstance(parsed, list):
-            return [float(value) for value in parsed[:3]]
-        return []
-    if isinstance(embedding, np.ndarray):
-        return [float(value) for value in embedding[:3].tolist()]
-    if isinstance(embedding, (list, tuple)):
-        return [float(value) for value in list(embedding)[:3]]
-    return []
+def _pick_valid_tag(tags: object) -> str | None:
+    if not isinstance(tags, list):
+        return None
+    for tag in tags:
+        value = str(tag).strip().lower()
+        if value:
+            return value
+    return None
 
 
-def _write_records(records: list[dict]) -> None:
-    for start in range(0, len(records), _WRITE_BATCH):
-        chunk = records[start : start + _WRITE_BATCH]
-        bulk_update_embeddings_and_clusters(chunk)
-        logger.info(
-            "DB write %d/%d articles committed",
-            min(start + _WRITE_BATCH, len(records)),
-            len(records),
-        )
+def _parse_existing_embedding(value: object) -> list[float] | None:
+    if value is None:
+        return None
+    if isinstance(value, np.ndarray):
+        return value.astype(np.float32).tolist()
+    if isinstance(value, list):
+        return [float(v) for v in value]
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            inner = text[1:-1].strip()
+            if not inner:
+                return []
+            return [float(part.strip()) for part in inner.split(",")]
+    return None
 
 
-def _upsert_cluster_summaries(records: list[dict]) -> None:
-    cluster_counts: dict[int, int] = defaultdict(int)
-    cluster_dates: dict[int, str] = {}
+def _build_group_records(rows: list[dict], next_cluster_id: int) -> tuple[list[dict], int]:
+    texts_to_embed: list[str] = []
+    ids_to_embed: list[int] = []
+    records: list[dict] = []
 
-    for record in records:
-        cluster_id = record["cluster_id"]
-        if cluster_id is None:
+    for row in rows:
+        existing_embedding = _parse_existing_embedding(row.get("embedding"))
+        record = {
+            "id": int(row["id"]),
+            "title": row.get("title") or "",
+            "tag": row["group_tag"],
+            "article_date": row["group_date"],
+            "embedding": existing_embedding,
+            "cluster_id": None,
+            "cluster_label": -1,
+            "embedding_model_version": _MODEL_VERSION,
+            "combined_text_source": build_text(
+                row.get("title") or "",
+                row.get("content"),
+                row.get("summary"),
+                row.get("tags"),
+            ),
+        }
+        records.append(record)
+
+        if existing_embedding is None:
+            texts_to_embed.append(record["combined_text_source"])
+            ids_to_embed.append(record["id"])
+
+    if texts_to_embed:
+        vectors = embed_texts(texts_to_embed, batch_size=_ENCODE_BATCH)
+        for article_id, vector in zip(ids_to_embed, vectors):
+            for record in records:
+                if record["id"] == article_id:
+                    record["embedding"] = vector.tolist()
+                    break
+
+    embeddings = np.array([record["embedding"] for record in records], dtype=np.float32)
+    labels = cluster_embeddings(embeddings)
+
+    local_to_global: dict[int, int] = {}
+    for record, label in zip(records, labels):
+        local_label = int(label)
+        record["cluster_label"] = local_label
+        if local_label == -1:
+            record["cluster_id"] = None
             continue
-        cluster_id = int(cluster_id)
-        cluster_counts[cluster_id] += 1
-        cluster_dates[cluster_id] = record["article_date"]
+        if local_label not in local_to_global:
+            local_to_global[local_label] = next_cluster_id
+            next_cluster_id += 1
+        record["cluster_id"] = local_to_global[local_label]
 
-    if not cluster_counts:
-        return
-
-    with get_cursor() as cur:
-        for cluster_id, count in cluster_counts.items():
-            cur.execute(
-                """
-                INSERT INTO clusters (cluster_id, article_date, article_count)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (cluster_id) DO UPDATE
-                SET article_date = EXCLUDED.article_date,
-                    article_count = EXCLUDED.article_count,
-                    created_at = NOW()
-                """,
-                (cluster_id, cluster_dates[cluster_id], count),
-            )
+    return records, next_cluster_id
 
 
-def _build_cluster_report(processed_by_date: dict[str, list[dict]]) -> Path | None:
-    if not processed_by_date:
+def _save_cluster_distribution_chart(records: list[dict], output_path: Path) -> Path | None:
+    if not records:
         return None
 
     import matplotlib
@@ -125,184 +157,158 @@ def _build_cluster_report(processed_by_date: dict[str, list[dict]]) -> Path | No
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    date_keys = sorted(processed_by_date.keys())
-    cluster_ids = sorted(
-        {
-            int(record["cluster_id"])
-            for records in processed_by_date.values()
-            for record in records
-            if record["cluster_id"] is not None
-        }
-    )
+    counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for record in records:
+        date_key = str(record["article_date"])
+        tag_key = str(record["tag"])
+        counts[date_key][tag_key] += 1
 
-    if not cluster_ids:
-        cluster_ids = []
+    dates = sorted(counts.keys())
+    tags = sorted({tag for per_date in counts.values() for tag in per_date.keys()})
+    matrix = np.array([[counts[d].get(t, 0) for t in tags] for d in dates], dtype=float)
 
-    matrix: list[list[int]] = []
-    labels: list[str] = []
-
-    for date_key in date_keys:
-        counts: dict[int, int] = defaultdict(int)
-        for record in processed_by_date[date_key]:
-            counts[int(record["cluster_label"])] += 1
-
-        row = [counts.get(cluster_id, 0) for cluster_id in cluster_ids]
-        if counts.get(-1):
-            row.append(counts[-1])
-        matrix.append(row)
-        labels.append(date_key)
-
-    if not matrix:
-        return None
-
-    column_labels = [f"C{cluster_id}" for cluster_id in cluster_ids]
-    if any(-1 == int(record["cluster_label"]) for records in processed_by_date.values() for record in records):
-        column_labels.append("Outlier")
-
-    data = np.array(matrix, dtype=float)
-
-    fig_width = max(8, len(column_labels) * 1.1)
-    fig_height = max(4, len(labels) * 0.7)
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-    image = ax.imshow(data, cmap="Blues", aspect="auto")
-    ax.set_xticks(range(len(column_labels)))
-    ax.set_xticklabels(column_labels, rotation=45, ha="right")
-    ax.set_yticks(range(len(labels)))
-    ax.set_yticklabels(labels)
-    ax.set_xlabel("Cluster ID")
+    fig, ax = plt.subplots(figsize=(max(7, len(tags) * 1.1), max(4, len(dates) * 0.7)))
+    image = ax.imshow(matrix, cmap="YlGnBu", aspect="auto")
+    ax.set_xticks(range(len(tags)))
+    ax.set_xticklabels(tags, rotation=45, ha="right")
+    ax.set_yticks(range(len(dates)))
+    ax.set_yticklabels(dates)
+    ax.set_xlabel("Tag")
     ax.set_ylabel("Article date")
-    ax.set_title("Cluster distribution by article date")
+    ax.set_title("Processed article counts by date and tag")
     fig.colorbar(image, ax=ax, label="Article count")
 
-    for row_index in range(data.shape[0]):
-        for col_index in range(data.shape[1]):
-            value = int(data[row_index, col_index])
-            if value:
-                ax.text(col_index, row_index, str(value), ha="center", va="center", color="black", fontsize=8)
-
     fig.tight_layout()
-    _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(_REPORT_PATH, dpi=180)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
     plt.close(fig)
-    logger.info("Cluster report saved to %s", _REPORT_PATH)
-    return _REPORT_PATH
+    return output_path
+
+
+def _save_cluster_scatter_chart(records: list[dict], output_path: Path) -> Path | None:
+    if not records:
+        return None
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    embeddings = np.array([record["embedding"] for record in records], dtype=np.float32)
+    labels = np.array([record["cluster_label"] for record in records], dtype=np.int32)
+
+    if len(records) < 2:
+        return None
+
+    projection = PCA(n_components=2).fit_transform(embeddings)
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    unique_labels = sorted(set(int(label) for label in labels))
+    for label in unique_labels:
+        points = projection[labels == label]
+        if label == -1:
+            ax.scatter(points[:, 0], points[:, 1], s=36, marker="x", label="noise")
+        else:
+            ax.scatter(points[:, 0], points[:, 1], s=36, label=f"cluster {label}")
+
+    ax.set_title("Embedding cluster projection (PCA)")
+    ax.set_xlabel("PC 1")
+    ax.set_ylabel("PC 2")
+    ax.legend(loc="best", fontsize=8)
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+    return output_path
 
 
 def _print_verification(processed_records: list[dict]) -> None:
-    samples = fetch_processed_article_samples(limit=5)
-    print("Processed article samples:")
+    samples = fetch_processed_article_samples(limit=8)
+    print("Processed samples from Supabase articles table:")
     for sample in samples:
-        preview = _preview_embedding(sample.get("embedding"))
+        emb = sample.get("embedding")
+        emb_preview = emb[:3] if isinstance(emb, list) else str(emb)[:40]
         print(
-            f"  id={sample['id']} cluster_id={sample['cluster_id']} embedding[:3]={preview}"
+            f"  id={sample['id']} cluster_id={sample['cluster_id']} tag={sample.get('cluster_tag')} "
+            f"model={sample.get('embedding_model_version')} embedding[:3]={emb_preview}"
         )
 
-    cluster_titles: dict[int, list[str]] = defaultdict(list)
+    by_cluster: DefaultDict[int, list[str]] = defaultdict(list)
     for record in processed_records:
-        cluster_id = record["cluster_id"]
-        if cluster_id == -1:
-            continue
+        cluster_id = record.get("cluster_id")
         if cluster_id is None:
             continue
-        cluster_id = int(cluster_id)
-        cluster_titles[cluster_id].append(record["title"])
+        by_cluster[int(cluster_id)].append(record["title"])
 
-    print("Cluster titles:")
-    for cluster_id in sorted(cluster_titles):
-        print(f"  cluster {cluster_id}:")
-        for title in cluster_titles[cluster_id]:
+    print("\nCluster topic preview:")
+    for cluster_id in sorted(by_cluster.keys()):
+        print(f"  cluster {cluster_id}")
+        for title in by_cluster[cluster_id][:5]:
             print(f"    - {title}")
 
 
-def run_pipeline() -> dict:
-    """Execute the full embedding + clustering pipeline."""
-    t0 = time.perf_counter()
+def run_pipeline(process_date: date | str | None = None) -> dict:
+    """Run the complete embedding and clustering workflow."""
+    started = time.perf_counter()
+    target_date = _resolve_target_date(process_date)
 
-    total_pending = count_unprocessed_articles()
+    total_pending = count_unprocessed_articles(
+        target_date=target_date,
+        allowed_languages=_ALLOWED_LANGUAGES,
+    )
     if total_pending == 0:
-        logger.info("No unprocessed articles found — pipeline complete")
+        logger.info("No pending Arabic/French articles for date=%s", target_date)
         return {
             "processed": 0,
-            "batches": 0,
-            "date_groups": 0,
+            "groups": 0,
             "elapsed_seconds": 0.0,
-            "report_path": None,
+            "target_date": str(target_date),
+            "distribution_report": None,
+            "scatter_report": None,
         }
 
-    logger.info("Articles to process: %d  (fetch_batch=%d)", total_pending, _FETCH_BATCH)
-
-    articles_by_date: DefaultDict[str, list[dict]] = defaultdict(list)
+    grouped: DefaultDict[tuple[str, str], list[dict]] = defaultdict(list)
     fetch_batches = 0
-
-    for batch in _iter_batches():
+    for batch in _iter_batches(target_date):
         for row in batch:
-            articles_by_date[_article_date_key(row)].append(row)
+            tag = _pick_valid_tag(row.get("tags"))
+            if not tag:
+                continue
+            row["group_tag"] = tag
+            row["group_date"] = _article_date_key(row)
+            grouped[(row["group_date"], tag)].append(row)
         fetch_batches += 1
-        logger.info(
-            "Fetched batch %d  (%d rows, %d total date groups)",
-            fetch_batches,
-            len(batch),
-            len(articles_by_date),
-        )
 
-    processed_by_date: dict[str, list[dict]] = {}
-    all_processed_records: list[dict] = []
     next_cluster_id = 0
+    all_records: list[dict] = []
 
-    for date_key in sorted(articles_by_date.keys()):
-        date_rows = sorted(articles_by_date[date_key], key=lambda row: row["id"])
-        logger.info("Processing %s with %d article(s)", date_key, len(date_rows))
+    for group_key in sorted(grouped.keys()):
+        date_key, tag_key = group_key
+        rows = sorted(grouped[group_key], key=lambda item: int(item["id"]))
+        logger.info("Clustering group date=%s tag=%s with %d article(s)", date_key, tag_key, len(rows))
+        records, next_cluster_id = _build_group_records(rows, next_cluster_id)
+        bulk_update_embeddings_and_clusters(records)
+        all_records.extend(records)
 
-        texts = [build_text(row["title"], row.get("content"), row.get("summary")) for row in date_rows]
-        vectors = embed_texts(texts, batch_size=_ENCODE_BATCH)
-        labels = cluster_embeddings(vectors)
-
-        local_to_global: dict[int, int] = {}
-        records: list[dict] = []
-        for row, vector, local_label in zip(date_rows, vectors, labels):
-            local_label = int(local_label)
-            if local_label == -1:
-                global_cluster_id = None
-            else:
-                if local_label not in local_to_global:
-                    local_to_global[local_label] = next_cluster_id
-                    next_cluster_id += 1
-                global_cluster_id = local_to_global[local_label]
-
-            records.append(
-                {
-                    "id": row["id"],
-                    "title": row["title"],
-                    "embedding": vector.tolist(),
-                    "cluster_id": global_cluster_id,
-                    "cluster_label": local_label,
-                    "article_date": date_key,
-                }
-            )
-
-        _write_records(records)
-        _upsert_cluster_summaries(records)
-        processed_by_date[date_key] = records
-        all_processed_records.extend(records)
-
-    report_path = _build_cluster_report(processed_by_date)
-    _print_verification(all_processed_records)
-
-    elapsed = time.perf_counter() - t0
-    summary = {
-        "processed": len(all_processed_records),
-        "batches": fetch_batches,
-        "date_groups": len(processed_by_date),
-        "elapsed_seconds": round(elapsed, 2),
-        "report_path": str(report_path) if report_path else None,
-    }
-    logger.info(
-        "Pipeline complete — processed=%d  batches=%d  date_groups=%d  elapsed=%.1fs",
-        summary["processed"],
-        summary["batches"],
-        summary["date_groups"],
-        summary["elapsed_seconds"],
+    distribution_path = _save_cluster_distribution_chart(
+        all_records,
+        _REPORT_DIR / "cluster_distribution_heatmap.png",
     )
-    if report_path:
-        logger.info("Cluster report written to %s", report_path)
+    scatter_path = _save_cluster_scatter_chart(
+        all_records,
+        _REPORT_DIR / "cluster_scatter_pca.png",
+    )
+    _print_verification(all_records)
+
+    elapsed = round(time.perf_counter() - started, 2)
+    summary = {
+        "processed": len(all_records),
+        "groups": len(grouped),
+        "fetch_batches": fetch_batches,
+        "target_date": str(target_date),
+        "elapsed_seconds": elapsed,
+        "distribution_report": str(distribution_path) if distribution_path else None,
+        "scatter_report": str(scatter_path) if scatter_path else None,
+    }
+    logger.info("Embedding pipeline complete: %s", summary)
     return summary

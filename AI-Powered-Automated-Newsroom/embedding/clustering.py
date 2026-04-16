@@ -29,7 +29,7 @@ from sklearn.cluster import DBSCAN
 logger = logging.getLogger(__name__)
 
 # ── Tuneable parameters ────────────────────────────────────────────────────────
-_EPS: float = float(os.environ.get("DBSCAN_EPS", 0.20))
+_EPS: float = float(os.environ.get("DBSCAN_EPS", 0.70))
 _MIN_SAMPLES: int = int(os.environ.get("DBSCAN_MIN_SAMPLES", 2))
 
 

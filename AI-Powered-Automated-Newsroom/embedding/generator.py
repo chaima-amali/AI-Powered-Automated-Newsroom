@@ -1,36 +1,26 @@
-"""
-embedding/generator.py
------------------------
-Local embedding generation using sentence-transformers.
-
-Model : sentence-transformers/all-MiniLM-L6-v2
-Output: 1536-dimensional float32 vectors
-
-The SentenceTransformer model is loaded ONCE (singleton) to avoid
-re-loading weights on every batch call — essential for production.
-"""
+"""Embedding generation and text preparation utilities."""
 
 from __future__ import annotations
 
 import hashlib
 import logging
 import os
+import re
 from typing import List
 
 import numpy as np
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
 # ── Model configuration ────────────────────────────────────────────────────────
-# Override via env: EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
-_MODEL_NAME: str = os.environ.get(
-    "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
-)
-_EMBEDDING_DIM: int = 1536  # dimension for all-MiniLM-L6-v2
+_MODEL_NAME: str = "intfloat/multilingual-e5-base"
+_DB_VECTOR_DIM: int = int(os.environ.get("EMBEDDING_VECTOR_DIM", "768"))
 _BACKEND: str = os.environ.get("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
 
 # ── Singleton model instance ───────────────────────────────────────────────────
 _model: object | None = None
+_MODEL_OUTPUT_DIM: int | None = None
 
 
 class _FallbackSentenceTransformer:
@@ -72,6 +62,7 @@ def get_model() -> object:
     Thread-safe read after first load (GIL protects object reference assignment).
     """
     global _model
+    global _MODEL_OUTPUT_DIM
     if _model is None:
         logger.info("Loading embedding model: %s", _MODEL_NAME)
         if _BACKEND != "sentence-transformers":
@@ -79,7 +70,8 @@ def get_model() -> object:
                 "Using deterministic fallback embeddings (EMBEDDING_BACKEND=%s)",
                 _BACKEND,
             )
-            _model = _FallbackSentenceTransformer(_EMBEDDING_DIM)
+            _model = _FallbackSentenceTransformer(_DB_VECTOR_DIM)
+            _MODEL_OUTPUT_DIM = _DB_VECTOR_DIM
         else:
             try:
                 from sentence_transformers import SentenceTransformer
@@ -87,82 +79,104 @@ def get_model() -> object:
                 logger.warning(
                     "sentence-transformers is not installed; using deterministic fallback embeddings"
                 )
-                _model = _FallbackSentenceTransformer(_EMBEDDING_DIM)
+                _model = _FallbackSentenceTransformer(_DB_VECTOR_DIM)
+                _MODEL_OUTPUT_DIM = _DB_VECTOR_DIM
             else:
                 _model = SentenceTransformer(_MODEL_NAME)
+                _MODEL_OUTPUT_DIM = int(_model.get_sentence_embedding_dimension())
         logger.info(
-            "Model loaded. Embedding dim=%d  device=%s",
-            _EMBEDDING_DIM,
+            "Model loaded. model_dim=%s  db_vector_dim=%d  device=%s",
+            _MODEL_OUTPUT_DIM,
+            _DB_VECTOR_DIM,
             getattr(_model, "device", "cpu"),
         )
     return _model
 
 
+def _align_dimension(vectors: np.ndarray) -> np.ndarray:
+    """Pad or truncate model vectors to match the DB vector dimension."""
+    if vectors.ndim != 2:
+        return vectors
+
+    current_dim = int(vectors.shape[1])
+    if current_dim == _DB_VECTOR_DIM:
+        return vectors
+
+    if current_dim > _DB_VECTOR_DIM:
+        logger.warning(
+            "Embedding dim %d > DB dim %d; truncating vectors",
+            current_dim,
+            _DB_VECTOR_DIM,
+        )
+        return vectors[:, :_DB_VECTOR_DIM]
+
+    pad_width = _DB_VECTOR_DIM - current_dim
+    logger.info(
+        "Embedding dim %d < DB dim %d; zero-padding vectors",
+        current_dim,
+        _DB_VECTOR_DIM,
+    )
+    return np.pad(vectors, ((0, 0), (0, pad_width)), mode="constant")
+
+
 def _extract_first_paragraph(content: str) -> str:
-    """
-    Extract the first non-empty paragraph from article content.
+    """Extract first paragraph or first 2-3 non-empty lines from content."""
+    if not content:
+        return ""
 
-    News articles scraped from the web use newlines (\n or \n\n) to separate
-    paragraphs.  The first non-empty paragraph is the lead/lede — the
-    sentence or two that summarises the whole story, structurally similar
-    to a heading.  This gives the model the most signal-dense text.
+    raw_text = BeautifulSoup(content, "lxml").get_text("\n")
+    collapsed = re.sub(r"\r\n?", "\n", raw_text)
+    collapsed = re.sub(r"\n{3,}", "\n\n", collapsed)
+    paragraph_candidates = [chunk.strip() for chunk in re.split(r"\n{2,}", collapsed) if chunk.strip()]
+    if paragraph_candidates:
+        lead = paragraph_candidates[0]
+    else:
+        lead = collapsed.strip()
 
-    Strategy:
-      1. Split on double newlines first (common in cleaned article text).
-      2. Fall back to single newlines if nothing useful is found.
-      3. Return the first chunk that has at least 3 words.
-    """
-    for separator in ("\n\n", "\n"):
-        parts = [p.strip() for p in content.split(separator)]
-        for part in parts:
-            if len(part.split()) >= 3:   # skip single-word artefacts
-                return part
-    # Last resort: return whatever is there
-    return content.strip()
+    lines = [line.strip() for line in lead.split("\n") if line.strip()]
+    if lines:
+        return _clean_text(" ".join(lines[:3]))
+    return _clean_text(lead)
 
 
-def build_text(title: str, content: str | None, summary: str | None = None) -> str:
-    """
-    Construct the input text for embedding:
-      "{title}. {first paragraph of content}"
+def _clean_text(text: str | None) -> str:
+    """Remove HTML and normalize whitespace while preserving language characters."""
+    if not text:
+        return ""
+    # BeautifulSoup safely strips tags from partially malformed HTML snippets.
+    stripped = BeautifulSoup(text, "lxml").get_text(" ")
+    stripped = re.sub(r"\s+", " ", stripped)
+    return stripped.strip()
 
-    Using the first paragraph (lead sentence) rather than a fixed word count
-    gives the model the most semantically dense snippet — the part of a news
-    article that best captures its topic, similar to a headline + standfirst.
-    """
-    title = (title or "").strip()
-    content = (content or "").strip()
-    summary = (summary or "").strip()
 
-    if content:
-        first_para = _extract_first_paragraph(content)
-        content_words = first_para.split()[:500]
-        content_snippet = " ".join(content_words)
-        if title:
-            return f"{title}. {content_snippet}"
-        return content_snippet
+def build_text(
+    title: str,
+    content: str | None,
+    summary: str | None = None,
+    tags: list[str] | tuple[str, ...] | None = None,
+) -> str:
+    """Construct required embedding input: title + '. ' + title + '. ' + first paragraph."""
+    clean_title = _clean_text(title)
+    first_paragraph = _extract_first_paragraph(content or "")
+    if not first_paragraph:
+        first_paragraph = _clean_text(summary)
 
-    if summary:
-        if title:
-            return f"{title}. {summary}"
-        return summary
-
-    return title
+    if clean_title and first_paragraph:
+        return f"{clean_title}. {clean_title}. {first_paragraph}"
+    if clean_title:
+        return f"{clean_title}. {clean_title}"
+    return first_paragraph
 
 
 def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     """
-    Encode a list of strings into L2-normalised embedding vectors.
-
-    Args:
-        texts      : list of input strings (pre-built with build_text)
-        batch_size : sentences per forward pass (tune to your GPU/CPU RAM)
+    Encode a list of texts into L2-normalized sentence vectors.
 
     Returns:
-        np.ndarray of shape (len(texts), 1536), dtype=float32
+        np.ndarray of shape (len(texts), EMBEDDING_VECTOR_DIM), dtype=float32
     """
     if not texts:
-        return np.empty((0, _EMBEDDING_DIM), dtype=np.float32)
+        return np.empty((0, _DB_VECTOR_DIM), dtype=np.float32)
 
     model = get_model()
 
@@ -174,4 +188,6 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
         normalize_embeddings=True,   # L2-normalise → cosine sim == dot product
         convert_to_numpy=True,
     )
+    vectors = vectors.astype(np.float32)
+    vectors = _align_dimension(vectors)
     return vectors.astype(np.float32)

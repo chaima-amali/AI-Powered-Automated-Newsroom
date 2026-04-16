@@ -11,12 +11,15 @@ CREATE EXTENSION IF NOT EXISTS pgvector;
 -- ============================================================
 CREATE TABLE IF NOT EXISTS clusters (
     cluster_id      INT PRIMARY KEY,
+    tag             VARCHAR(120) NOT NULL,
     article_date    DATE NOT NULL,
     article_count   INT DEFAULT 0,
+    combined_text   TEXT,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_clusters_date ON clusters (article_date DESC);
+CREATE INDEX IF NOT EXISTS idx_clusters_tag ON clusters (tag);
 
 -- ============================================================
 -- SOURCES TABLE — registered newspapers/journals
@@ -67,7 +70,9 @@ CREATE TABLE IF NOT EXISTS articles (
     error_message    TEXT,                          -- populated on scrape failure
 
     -- AI pipeline fields (used in later steps)
-    embedding        vector(1536),                  -- embedding vector
+    embedding        vector(768),                   -- intfloat/multilingual-e5-base
+    embedding_model_version TEXT,
+    cluster_tag      VARCHAR(120),
     cluster_id       INT REFERENCES clusters(cluster_id) ON DELETE SET NULL,
     is_processed     BOOLEAN DEFAULT FALSE          -- has been through AI pipeline
 );
