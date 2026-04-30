@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import ast
+import sys
+from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
 from dotenv import load_dotenv
-from sklearn.cluster import DBSCAN
 
 load_dotenv()
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from db.connection import close_pool, get_cursor, init_pool
 from db.repository import bulk_update_embeddings_and_clusters
+from embedding.clustering import cluster_embeddings, refine_cluster_labels
+from embedding.labels import pick_primary_tag_value
+from embedding.pipeline import _assign_global_topic_cluster_ids, _cap_cluster_sizes
 
-DBSCAN_EPS = 0.20
 DBSCAN_MIN_SAMPLES = 2
 
 
@@ -33,10 +38,14 @@ def fetch_processed_articles() -> list[dict]:
                 id,
                 title,
                 embedding,
-                COALESCE(published_at::date, scraped_at::date) AS article_date
+                published_at::date AS article_date,
+                tags,
+                source_id,
+                source_name
               FROM articles
              WHERE is_processed = TRUE
                AND embedding IS NOT NULL
+               AND published_at IS NOT NULL
              ORDER BY article_date, id
             """
         )
@@ -45,27 +54,36 @@ def fetch_processed_articles() -> list[dict]:
 
 
 def recluster_articles(rows: list[dict]) -> list[dict]:
-    date_groups: dict[str, list[dict]] = defaultdict(list)
+    date_groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in rows:
-        date_groups[str(row["article_date"])].append(row)
+        tag = pick_primary_tag_value(row.get("tags"))
+        if tag is None and row.get("tags") is not None:
+            continue
+        date_key = str(row["article_date"])
+        date_groups[(date_key, tag or "untagged")].append(row)
 
     next_cluster_id = 0
     records: list[dict] = []
 
-    for date_key in sorted(date_groups.keys()):
-        date_rows = sorted(date_groups[date_key], key=lambda row: row["id"])
+    for group_key in sorted(date_groups.keys()):
+        date_key, tag_key = group_key
+        date_rows = sorted(date_groups[group_key], key=lambda row: row["id"])
         embeddings = np.array([_parse_embedding(row["embedding"]) for row in date_rows], dtype=np.float32)
+        sources = {
+            str(row.get("source_name") or row.get("source_id") or row["id"])
+            for row in date_rows
+        }
 
-        if len(date_rows) < DBSCAN_MIN_SAMPLES:
+        if len(date_rows) < DBSCAN_MIN_SAMPLES or len(sources) < 2:
             labels = np.full(len(date_rows), -1, dtype=np.int32)
         else:
-            labels = DBSCAN(
-                eps=DBSCAN_EPS,
+            labels = cluster_embeddings(embeddings, min_samples=DBSCAN_MIN_SAMPLES)
+            labels = refine_cluster_labels(
+                embeddings,
+                labels,
+                source_keys=[str(row.get("source_name") or row.get("source_id") or row["id"]) for row in date_rows],
                 min_samples=DBSCAN_MIN_SAMPLES,
-                metric="cosine",
-                algorithm="brute",
-                n_jobs=-1,
-            ).fit_predict(embeddings)
+            )
 
         local_to_global: dict[int, int] = {}
         for row, embedding, label in zip(date_rows, embeddings, labels):
@@ -86,9 +104,14 @@ def recluster_articles(rows: list[dict]) -> list[dict]:
                     "cluster_id": cluster_id,
                     "cluster_label": label,
                     "article_date": date_key,
+                    "tag": tag_key,
+                    "combined_text_source": row["title"],
+                    "source_key": str(row.get("source_name") or row.get("source_id") or row["id"]),
                 }
             )
 
+    _assign_global_topic_cluster_ids(records)
+    _cap_cluster_sizes(records)
     return records
 
 

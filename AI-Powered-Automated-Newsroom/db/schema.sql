@@ -12,6 +12,7 @@ CREATE EXTENSION IF NOT EXISTS pgvector;
 CREATE TABLE IF NOT EXISTS clusters (
     cluster_id      INT PRIMARY KEY,
     tag             VARCHAR(120) NOT NULL,
+    cluster_tag     VARCHAR(120),
     article_date    DATE NOT NULL,
     article_count   INT DEFAULT 0,
     combined_text   TEXT,
@@ -106,3 +107,11 @@ CREATE INDEX IF NOT EXISTS idx_articles_cluster_id    ON articles (cluster_id) W
 -- Full-text search index (Arabic + French)
 CREATE INDEX IF NOT EXISTS idx_articles_fts
     ON articles USING GIN (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(content, '')));
+
+CREATE TABLE IF NOT EXISTS article_cluster (
+    article_id  BIGINT PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    cluster_id  INT NOT NULL REFERENCES clusters(cluster_id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_article_cluster_cluster_id ON article_cluster (cluster_id);

@@ -24,7 +24,7 @@ class TestBuildText:
     def test_title_and_content_format(self):
         from embedding.generator import build_text
         result = build_text("My Title", "First line.\nSecond line.\nThird line.")
-        assert result.startswith("My Title. My Title.")
+        assert result.startswith("My Title. First line.")
 
     def test_html_cleaning(self):
         from embedding.generator import build_text
@@ -35,8 +35,8 @@ class TestBuildText:
 
     def test_missing_content(self):
         from embedding.generator import build_text
-        assert build_text("Only Title", None) == "Only Title. Only Title"
-        assert build_text("Only Title", "") == "Only Title. Only Title"
+        assert build_text("Only Title", None) == "Only Title"
+        assert build_text("Only Title", "") == "Only Title"
 
     def test_empty_title(self):
         from embedding.generator import build_text
@@ -61,6 +61,44 @@ class TestEmbedTexts:
         vecs = embed_texts(["Test sentence"])
         norms = np.linalg.norm(vecs, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-5)
+
+
+class TestClusterLabels:
+    def test_choose_cluster_tag_prefers_normalized_tags(self):
+        from embedding.labels import choose_cluster_tag
+
+        articles = [
+            {"title": "Economy rises", "tags": ["économie", "finance"]},
+            {"title": "Markets move", "tags": ["finance"]},
+            {"title": "Budget update", "tags": ["finance"]},
+        ]
+
+        assert choose_cluster_tag(articles) == "economy"
+
+    def test_choose_cluster_tag_falls_back_to_keywords(self):
+        from embedding.labels import choose_cluster_tag
+
+        articles = [
+            {"title": "Election debate heats up", "tags": []},
+            {"title": "Election results expected tonight", "tags": None},
+        ]
+
+        assert choose_cluster_tag(articles) != "unknown"
+
+    def test_pick_primary_tag_value_uses_first_tag_only(self):
+        from embedding.labels import pick_primary_tag_value
+
+        assert pick_primary_tag_value(["economy", "politics", "sports"]) == "economy"
+
+    def test_pick_primary_tag_value_ignores_a_la_une(self):
+        from embedding.labels import pick_primary_tag_value
+
+        assert pick_primary_tag_value(["a la une", "economy"]) is None
+
+    def test_pick_primary_tag_value_allows_null_tag(self):
+        from embedding.labels import pick_primary_tag_value
+
+        assert pick_primary_tag_value(None) is None
 
 
 # ── embedding/clustering.py ───────────────────────────────────────────────────
@@ -88,6 +126,29 @@ class TestClusterEmbeddings:
         # All same cluster (not noise)
         assert len(set(labels)) == 1
         assert -1 not in labels
+
+    def test_refine_cluster_labels_splits_mixed_topics(self):
+        from embedding.clustering import refine_cluster_labels
+
+        topic_a = np.zeros((2, EMBED_DIM), dtype=np.float32)
+        topic_b = np.zeros((2, EMBED_DIM), dtype=np.float32)
+        topic_a[:, 0] = 1.0
+        topic_b[:, 1] = 1.0
+        embeddings = np.vstack([topic_a, topic_b]).astype(np.float32)
+        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+
+        labels = np.zeros(4, dtype=np.int32)
+        sources = ["source-a", "source-b", "source-c", "source-d"]
+
+        refined = refine_cluster_labels(
+            embeddings,
+            labels,
+            source_keys=sources,
+            min_pairwise_similarity=0.85,
+            min_samples=2,
+        )
+
+        assert len(set(int(label) for label in refined if int(label) != -1)) >= 2
 
 
 class TestClusteringGraph:

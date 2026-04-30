@@ -13,8 +13,12 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+# Avoid TensorFlow import path on Windows when only PyTorch embeddings are needed.
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("USE_TF", "0")
+
 # ── Model configuration ────────────────────────────────────────────────────────
-_MODEL_NAME: str = "intfloat/multilingual-e5-base"
+_MODEL_NAME: str = os.environ.get("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base").strip()
 _DB_VECTOR_DIM: int = int(os.environ.get("EMBEDDING_VECTOR_DIM", "768"))
 _BACKEND: str = os.environ.get("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
 
@@ -66,24 +70,20 @@ def get_model() -> object:
     if _model is None:
         logger.info("Loading embedding model: %s", _MODEL_NAME)
         if _BACKEND != "sentence-transformers":
-            logger.warning(
-                "Using deterministic fallback embeddings (EMBEDDING_BACKEND=%s)",
-                _BACKEND,
+            raise RuntimeError(
+                "Fallback embeddings are disabled for production clustering. "
+                "Set EMBEDDING_BACKEND=sentence-transformers and rerun."
             )
-            _model = _FallbackSentenceTransformer(_DB_VECTOR_DIM)
-            _MODEL_OUTPUT_DIM = _DB_VECTOR_DIM
-        else:
-            try:
-                from sentence_transformers import SentenceTransformer
-            except ModuleNotFoundError:
-                logger.warning(
-                    "sentence-transformers is not installed; using deterministic fallback embeddings"
-                )
-                _model = _FallbackSentenceTransformer(_DB_VECTOR_DIM)
-                _MODEL_OUTPUT_DIM = _DB_VECTOR_DIM
-            else:
-                _model = SentenceTransformer(_MODEL_NAME)
-                _MODEL_OUTPUT_DIM = int(_model.get_sentence_embedding_dimension())
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "sentence-transformers is required. Install it and rerun without fallback."
+            ) from exc
+
+        _model = SentenceTransformer(_MODEL_NAME)
+        _MODEL_OUTPUT_DIM = int(_model.get_sentence_embedding_dimension())
         logger.info(
             "Model loaded. model_dim=%s  db_vector_dim=%d  device=%s",
             _MODEL_OUTPUT_DIM,
@@ -155,17 +155,25 @@ def build_text(
     summary: str | None = None,
     tags: list[str] | tuple[str, ...] | None = None,
 ) -> str:
-    """Construct required embedding input: title + '. ' + title + '. ' + first paragraph."""
+    """Construct embedding input: title + first paragraph."""
     clean_title = _clean_text(title)
     first_paragraph = _extract_first_paragraph(content or "")
     if not first_paragraph:
         first_paragraph = _clean_text(summary)
 
     if clean_title and first_paragraph:
-        return f"{clean_title}. {clean_title}. {first_paragraph}"
+        return f"{clean_title}. {first_paragraph}"
     if clean_title:
-        return f"{clean_title}. {clean_title}"
+        return clean_title
     return first_paragraph
+
+
+def get_effective_model_version() -> str:
+    """Return the effective embedding backend/model for auditability."""
+    model = get_model()
+    if isinstance(model, _FallbackSentenceTransformer):
+        return f"fallback-hash-{_DB_VECTOR_DIM}"
+    return _MODEL_NAME
 
 
 def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
@@ -181,13 +189,31 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     model = get_model()
 
     logger.debug("Encoding %d texts  batch_size=%d", len(texts), batch_size)
-    vectors: np.ndarray = model.encode(
-        texts,
-        batch_size=batch_size,
-        show_progress_bar=False,
-        normalize_embeddings=True,   # L2-normalise → cosine sim == dot product
-        convert_to_numpy=True,
-    )
+    try:
+        vectors: np.ndarray = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=False,
+            normalize_embeddings=True,   # L2-normalise → cosine sim == dot product
+            convert_to_numpy=True,
+        )
+    except Exception as exc:  # capture unexpected model/runtime errors to a log file
+        import traceback
+
+        tb = traceback.format_exc()
+        try:
+            with open("pipeline_error.log", "w", encoding="utf-8") as fh:
+                fh.write(tb)
+        except Exception:
+            pass
+        logger.exception("Embedding model encode failed")
+        raise
     vectors = vectors.astype(np.float32)
     vectors = _align_dimension(vectors)
+    nonzero_ratio = float((vectors != 0).mean()) if vectors.size else 0.0
+    if nonzero_ratio < 0.50:
+        raise RuntimeError(
+            f"Embedding density check failed (nonzero_ratio={nonzero_ratio:.3f}). "
+            "Vectors look sparse and may come from a fallback/non-semantic encoder."
+        )
     return vectors.astype(np.float32)

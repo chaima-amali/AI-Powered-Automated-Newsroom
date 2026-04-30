@@ -1,3 +1,3 @@
 import os
 
-os.environ.setdefault("EMBEDDING_BACKEND", "fallback")
+os.environ.setdefault("EMBEDDING_BACKEND", "sentence-transformers")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import date, datetime, timezone
 from typing import Optional, Sequence
 
@@ -140,15 +141,17 @@ def fetch_unprocessed_articles(
                 content,
                 summary,
                 tags,
+                                source_id,
+                                source_name,
                 language,
                 embedding,
-                COALESCE(published_at::date, scraped_at::date) AS article_date
+                                published_at::date AS article_date
             FROM articles
             WHERE scrape_status = 'success'
               AND id > %s
-              AND COALESCE(array_length(tags, 1), 0) > 0
+                            AND published_at IS NOT NULL
               AND lower(COALESCE(language, '')) = ANY(%s)
-              AND (%s::date IS NULL OR COALESCE(published_at::date, scraped_at::date) = %s::date)
+                            AND (%s::date IS NULL OR published_at::date = %s::date)
               AND (
                     embedding IS NULL
                  OR cluster_id IS NULL
@@ -176,9 +179,9 @@ def count_unprocessed_articles(
             SELECT COUNT(*)
             FROM articles
             WHERE scrape_status = 'success'
-              AND COALESCE(array_length(tags, 1), 0) > 0
+                            AND published_at IS NOT NULL
               AND lower(COALESCE(language, '')) = ANY(%s)
-              AND (%s::date IS NULL OR COALESCE(published_at::date, scraped_at::date) = %s::date)
+                            AND (%s::date IS NULL OR published_at::date = %s::date)
               AND (
                     embedding IS NULL
                  OR cluster_id IS NULL
@@ -195,6 +198,17 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
     if not records:
         return
 
+    article_cluster_rows = [
+        (int(record["id"]), int(record["cluster_id"]))
+        for record in records
+        if record.get("cluster_id") is not None
+    ]
+    null_cluster_article_ids = [
+        int(record["id"])
+        for record in records
+        if record.get("cluster_id") is None
+    ]
+
     article_rows = [
         (
             int(record["id"]),
@@ -206,23 +220,53 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
         for record in records
     ]
 
-    cluster_payload: dict[tuple[int, str, str], list[str]] = {}
+    cluster_payload: dict[int, dict[str, object]] = {}
     for record in records:
         cluster_id = record.get("cluster_id")
         if cluster_id is None:
             continue
         cluster_id = int(cluster_id)
-        cluster_tag = str(record.get("tag") or "untagged")
-        cluster_date = str(record.get("article_date"))
-        key = (cluster_id, cluster_tag, cluster_date)
-        cluster_payload.setdefault(key, []).append(str(record.get("combined_text_source") or ""))
+        payload = cluster_payload.setdefault(
+            cluster_id,
+            {
+                "tags": [],
+                "dates": [],
+                "snippets": [],
+            },
+        )
+        payload["tags"].append(str(record.get("tag") or "untagged"))
+        payload["dates"].append(str(record.get("article_date") or date.today().isoformat()))
+        payload["snippets"].append(str(record.get("combined_text_source") or ""))
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS article_cluster (
+                    article_id BIGINT PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+                    cluster_id INT NOT NULL REFERENCES clusters(cluster_id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+
             if cluster_payload:
                 cluster_rows = []
-                for (cluster_id, cluster_tag, cluster_date), snippets in cluster_payload.items():
-                    combined_text = "\n".join(item for item in snippets if item).strip()
+                for cluster_id, payload in cluster_payload.items():
+                    tags = [str(tag) for tag in payload["tags"] if str(tag).strip()]
+                    dates = [str(item) for item in payload["dates"] if str(item).strip()]
+                    snippets = [str(item) for item in payload["snippets"] if str(item).strip()]
+
+                    if tags:
+                        counts = Counter(tags)
+                        best_count = max(counts.values())
+                        best_tags = sorted(tag for tag, count in counts.items() if count == best_count)
+                        cluster_tag = best_tags[0]
+                    else:
+                        cluster_tag = "untagged"
+
+                    cluster_date = sorted(dates)[0] if dates else date.today().isoformat()
+                    combined_text = "\n".join(snippets).strip()
                     cluster_rows.append((cluster_id, cluster_tag, cluster_date, combined_text))
 
                 execute_values(
@@ -264,8 +308,32 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
                 page_size=500,
             )
 
+            if article_cluster_rows:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO article_cluster (article_id, cluster_id)
+                    VALUES %s
+                    ON CONFLICT (article_id) DO UPDATE
+                    SET cluster_id = EXCLUDED.cluster_id,
+                        created_at = NOW()
+                    """,
+                    article_cluster_rows,
+                    template="(%s, %s)",
+                    page_size=500,
+                )
+
+            if null_cluster_article_ids:
+                cur.execute(
+                    """
+                    DELETE FROM article_cluster
+                    WHERE article_id = ANY(%s)
+                    """,
+                    (null_cluster_article_ids,),
+                )
+
             if cluster_payload:
-                cluster_ids = sorted({item[0] for item in cluster_payload.keys()})
+                cluster_ids = sorted(int(item) for item in cluster_payload.keys())
                 for cluster_id in cluster_ids:
                     cur.execute(
                         """
@@ -279,6 +347,17 @@ def bulk_update_embeddings_and_clusters(records: list[dict]) -> None:
                         """,
                         (cluster_id, cluster_id),
                     )
+
+                cur.execute(
+                    """
+                    DELETE FROM clusters c
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM articles a
+                        WHERE a.cluster_id = c.cluster_id
+                    )
+                    """
+                )
 
     logger.info("Persisted embedding/cluster updates for %d articles", len(records))
 

@@ -57,6 +57,11 @@ def main() -> None:
         type=str,
         help="Process only this publication date (YYYY-MM-DD). Defaults to today.",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all articles, ignoring date filters.",
+    )
     args = parser.parse_args()
 
     # ── Validate required env vars ─────────────────────────────────────────────
@@ -76,7 +81,7 @@ def main() -> None:
         return
 
     # ── Import pipeline here so the model isn't loaded during --dry-run ───────
-    from embedding.pipeline import run_pipeline
+    from embedding.pipeline import run_embedding_pipeline as run_pipeline
 
     init_pool()
 
@@ -92,7 +97,7 @@ def main() -> None:
                 )
                 time.sleep(args.schedule * 60)
         else:
-            summary = run_pipeline(process_date=args.date)
+            summary = run_pipeline(process_date=args.date if not args.all else "*")
             logger.info("Summary: %s", summary)
     except KeyboardInterrupt:
         logger.info("Interrupted by user — shutting down gracefully.")
