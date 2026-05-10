@@ -1,81 +1,30 @@
-# Environment variables
 .env
-.env.local
-.env.*.local
-*.env
-
-# Python
+.env.*
+!.env.example
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
+dist/
+build/
 venv/
-ENV/
-env/
 .venv/
-.ENV/
-
-# IDE and editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.project
-.pydevproject
-.settings/
-*.sublime-project
-*.sublime-workspace
-
-# Logs
+backend/.venv/
+frontend/node_modules/
+.pytest_cache/
+.coverage
+htmlcov/
 logs/
 *.log
-
-# Database
-*.db
-*.sqlite3
-
-# Testing
-.tox/
-.nox/
-.coverage
-.coverage.*
-htmlcov/
-.pytest_cache/
-.hypothesis/
-
-# Jupyter Notebook
-.ipynb_checkpoints/
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# OS files
+pipeline_error.log
+.cache/
+models/
+*.bin
+*.safetensors
+media/images/
+artifacts/
+.idea/
+.vscode/
+*.swp
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# Temporary files
-*.tmp
-*.temp
-*.bak

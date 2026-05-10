@@ -1,0 +1,117 @@
+.page { display: flex; flex-direction: column; min-height: 100vh; }
+.main { flex: 1; padding: 40px 0 80px; }
+.container { max-width: 780px; margin: 0 auto; padding: 0 24px; }
+
+.backBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .875rem; font-weight: 500; color: var(--ink-3);
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-sans); padding: 8px 0;
+  transition: color var(--t); margin-bottom: 32px;
+}
+.backBtn:hover { color: var(--accent); }
+
+.article { animation: fadeIn .3s var(--ease); }
+
+.metaHeader {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+}
+.categoryTag {
+  font-size: .7rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 100px;
+  background: var(--accent-bg); color: var(--accent);
+}
+.actions { display: flex; gap: 8px; }
+.actionBtn {
+  width: 36px; height: 36px; border: 1.5px solid var(--border); border-radius: var(--r);
+  background: #fff; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--ink-3); transition: all var(--t);
+}
+.actionBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.title {
+  font-family: var(--font-serif);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 900; line-height: 1.15; color: var(--ink);
+  letter-spacing: -.02em; margin-bottom: 16px;
+}
+
+.meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  font-size: .82rem; color: var(--ink-4); margin-bottom: 28px;
+}
+
+.coverWrap {
+  border-radius: var(--r-xl); overflow: hidden; margin-bottom: 32px;
+}
+.coverImg { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
+
+.pullQuote {
+  border-left: 3px solid var(--accent);
+  padding: 16px 20px;
+  background: var(--paper-2);
+  border-radius: 0 var(--r) var(--r) 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem; color: var(--ink-2);
+  font-style: italic; line-height: 1.6;
+  margin-bottom: 28px;
+}
+
+.body {
+  font-size: 1.05rem; line-height: 1.85; color: var(--ink-2);
+}
+.body p { margin-bottom: 22px; }
+.bodyH1 { font-family: var(--font-serif); font-size: 1.8rem; font-weight: 700; margin: 40px 0 14px; color: var(--ink); }
+.bodyH2 { font-family: var(--font-serif); font-size: 1.4rem; font-weight: 700; margin: 32px 0 12px; color: var(--ink); }
+.bodyH3 { font-family: var(--font-serif); font-size: 1.1rem; font-weight: 700; margin: 24px 0 8px; color: var(--ink); }
+
+.tagsSection {
+  margin-top: 40px; padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tagsLabel {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--ink-4);
+}
+.tagsList { display: flex; flex-wrap: wrap; gap: 6px; }
+.tagPill {
+  font-size: .78rem; background: var(--paper-2); border: 1px solid var(--border);
+  border-radius: 100px; padding: 4px 12px; color: var(--ink-2);
+}
+
+.aboutBox {
+  margin-top: 24px; padding: 20px 22px;
+  background: var(--paper-2); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.aboutBox h4 {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--ink-4); margin-bottom: 8px;
+}
+.aboutBox p { font-size: .875rem; color: var(--ink-3); line-height: 1.6; }
+
+.navLinks { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); }
+.navBack {
+  background: none; border: 1.5px solid var(--border); color: var(--ink-2);
+  font-family: var(--font-sans); font-size: .875rem; font-weight: 500;
+  padding: 9px 20px; border-radius: var(--r); cursor: pointer;
+  transition: all var(--t);
+}
+.navBack:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Error */
+.errorState {
+  text-align: center; padding: 80px 24px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.errorIcon { font-size: 3rem; }
+.errorState h2 { font-family: var(--font-serif); font-size: 1.5rem; font-weight: 700; }
+.errorState p  { color: var(--ink-3); font-size: .9rem; }
+.backAction {
+  margin-top: 8px; padding: 11px 24px; background: var(--accent); color: #fff;
+  border: none; border-radius: var(--r); font-size: .9rem; font-weight: 600;
+  cursor: pointer; font-family: var(--font-sans); transition: background var(--t);
+}
+.backAction:hover { background: var(--accent-2); }
+
+.footer { background: var(--ink); color: rgba(255,255,255,.3); text-align: center; padding: 20px; font-size: .8rem; }
