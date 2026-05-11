@@ -19,7 +19,7 @@
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  Stage 2: Embedding                                             │
-│  multilingual-e5-base (768-dim) → DBSCAN → refine_cluster_labels│
+sentence-transformers/LaBSE (768-dim) → DBSCAN → refine_cluster_labels│
 │  Batch encode (64/call) → execute_values bulk upsert            │
 └────────────────────────────┬────────────────────────────────────┘
                              │ clusters + article_cluster tables
