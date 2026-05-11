@@ -71,10 +71,11 @@ def _norm_date(d):
     return datetime.strptime(str(d), "%Y-%m-%d").date()
 
 
-def _norm_langs(langs):
+def _norm_langs(langs) -> list:
+    """Convert language input (tuple, list, or None) to list for psycopg2 ANY() binding."""
     if not langs:
-        return ["ar", "fr"]
-    return [s.strip().lower() for s in langs if s.strip()] or ["ar", "fr"]
+        return ["ar", "fr", "en"]
+    return list(langs) if isinstance(langs, tuple) else [s.strip().lower() for s in langs if s.strip()] or ["ar", "fr", "en"]
 
 
 def _vec_str(v) -> Optional[str]:

@@ -43,14 +43,13 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from embedding.labels import normalize_tag
+from pipeline.embedding.labels import normalize_tag
 
 logger = logging.getLogger(__name__)
 

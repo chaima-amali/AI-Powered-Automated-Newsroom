@@ -39,7 +39,15 @@ def _get_embed_model():
     global _embed_model
     if _embed_model is None:
         from sentence_transformers import SentenceTransformer
-        model_name = os.environ.get("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-base")
+        env_model = os.environ.get("EMBEDDING_MODEL_NAME", "sentence-transformers/LaBSE")
+        # Enforce LaBSE for query embedding to match the pipeline embeddings.
+        model_name = "sentence-transformers/LaBSE"
+        if env_model and env_model.lower() != model_name.lower():
+            logger.warning(
+                "Search endpoint EMBEDDING_MODEL_NAME is '%s' but using '%s' to match pipeline embeddings.",
+                env_model,
+                model_name,
+            )
         logger.info("Loading search embedding model: %s", model_name)
         _embed_model = SentenceTransformer(model_name)
     return _embed_model

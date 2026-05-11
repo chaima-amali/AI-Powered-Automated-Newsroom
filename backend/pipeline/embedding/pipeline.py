@@ -32,11 +32,10 @@ from sklearn.decomposition import PCA
 from db.repository import (
     bulk_update_embeddings_and_clusters,
     count_unprocessed_articles,
-    fetch_processed_article_samples,
     fetch_unprocessed_articles,
 )
-from embedding.clustering import cluster_articles
-from embedding.generator import build_text, embed_texts, get_effective_model_version
+from pipeline.embedding.clustering import cluster_articles
+from pipeline.embedding.generator import build_text, embed_texts, get_effective_model_version
 
 logger = logging.getLogger(__name__)
 

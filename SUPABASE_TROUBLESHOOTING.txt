@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+"""
+Supabase connection troubleshooting guide.
+
+This script will help you verify your Supabase setup and find the correct connection details.
+"""
+
+print("""
+═══════════════════════════════════════════════════════════════════════════════
+  SUPABASE CONNECTION TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️  Your connection is timing out. This likely means:
+  • Supabase instance is paused or down
+  • Network firewall is blocking the connection
+  • Wrong connection endpoint (pooler vs direct)
+
+🔍 STEPS TO FIX:
+
+1️⃣  CHECK SUPABASE INSTANCE STATUS:
+   ├─ Go to: https://app.supabase.com → Select your project
+   ├─ Look for green "Running" indicator next to project name
+   ├─ If paused (gray): Click "Resume" button
+   └─ Wait 30 seconds for instance to start
+
+2️⃣  GET CORRECT CONNECTION STRING:
+   ├─ Go to: Settings → Database → Connection String
+   ├─ You'll see two options:
+   │  • Connection Pooler (pgbouncer) - for web apps
+   │  • Direct Connection - for direct psycopg2 connections
+   ├─ Copy the DIRECT CONNECTION string
+   └─ It should look like:
+      postgresql://postgres.XXXXX:password@db.XXXXX.supabase.co:5432/postgres
+
+3️⃣  UPDATE YOUR .env FILE:
+   From the connection string above, extract and update:
+   ├─ DB_HOST=db.XXXXX.supabase.co  (NOT the pooler host)
+   ├─ DB_PORT=5432
+   ├─ DB_USER=postgres.XXXXX
+   ├─ DB_PASSWORD=your_password
+   ├─ DB_NAME=postgres
+   ├─ DB_SSLMODE=require  (required for Supabase)
+   └─ DB_POOL_MINCONN=1 & DB_POOL_MAXCONN=5
+
+4️⃣  TEST AGAIN:
+   ├─ cd backend/
+   ├─ python test_db_short_timeout.py
+   └─ It should now connect successfully
+
+✅ ONCE CONNECTED:
+   └─ Run: python main.py --stage embedding
+
+═══════════════════════════════════════════════════════════════════════════════
+""")

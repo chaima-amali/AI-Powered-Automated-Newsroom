@@ -28,12 +28,20 @@ logger = logging.getLogger(__name__)
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("USE_TF", "0")
 
-# ── Model configuration ────────────────────────────────────────────────────────
+# ── Model configuration ───────────────────────────────────────────────────────
 # LaBSE is the recommended model for Arabic/French/English cross-lingual tasks.
-# Override via env-var if you want to try a different multilingual ST model.
-_MODEL_NAME: str = os.environ.get(
-    "EMBEDDING_MODEL_NAME", "sentence-transformers/LaBSE"
-).strip()
+# Enforce LaBSE for production embedding/clustering to ensure consistent
+# multilingual behaviour. If an env var is set to a different model we log
+# a warning and override it to avoid accidental runs with weaker models.
+_ENV_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME", "sentence-transformers/LaBSE").strip()
+_MODEL_NAME: str = "sentence-transformers/LaBSE"
+if _ENV_MODEL_NAME and _ENV_MODEL_NAME.lower() != _MODEL_NAME.lower():
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "EMBEDDING_MODEL_NAME in environment is '%s' but pipeline enforces '%s' for consistent clustering. Overriding.",
+        _ENV_MODEL_NAME,
+        _MODEL_NAME,
+    )
 _DB_VECTOR_DIM: int = int(os.environ.get("EMBEDDING_VECTOR_DIM", "768"))
 _BACKEND: str = (
     os.environ.get("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
@@ -61,6 +69,19 @@ _ARABIC_NORM_MAP: dict[str, str] = {
 }
 _ARABIC_NORM_RE = re.compile(
     "[" + "".join(re.escape(k) for k in _ARABIC_NORM_MAP) + "]"
+)
+
+_PUNCT_TRANSLATION = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u00a0": " ",
+        "\u202f": " ",
+        "\u2013": "-",
+        "\u2014": "-",
+    }
 )
 
 
@@ -145,6 +166,7 @@ def _clean_text(text: str | None) -> str:
     if not text:
         return ""
     cleaned = _strip_html(text)
+    cleaned = cleaned.translate(_PUNCT_TRANSLATION)
     # Apply Arabic normalization only if the text contains Arabic script
     if re.search(r"[\u0600-\u06FF]", cleaned):
         cleaned = _normalize_arabic(cleaned)
@@ -208,7 +230,7 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
 
     Args:
         texts: List of strings (any mix of Arabic, French, English).
-        batch_size: Number of texts per GPU/CPU batch.
+        batch_size: Preserved for compatibility; embeddings are encoded one at a time.
 
     Returns:
         np.ndarray of shape (len(texts), _DB_VECTOR_DIM), dtype=float32,
@@ -220,19 +242,25 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     model = get_model()
     logger.debug("Encoding %d texts  batch_size=%d", len(texts), batch_size)
 
+    vectors: list[np.ndarray] = []
     try:
-        vectors: np.ndarray = model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=True,  # L2-normalise → cosine_sim == dot product
-            convert_to_numpy=True,
-        )
+        for text in texts:
+            encoded = model.encode(
+                [text],
+                batch_size=1,
+                show_progress_bar=False,
+                normalize_embeddings=True,  # L2-normalise → cosine_sim == dot product
+                convert_to_numpy=True,
+            )
+            encoded = np.asarray(encoded, dtype=np.float32)
+            if encoded.ndim == 1:
+                encoded = encoded.reshape(1, -1)
+            vectors.append(encoded[0])
     except Exception:
         logger.exception("Embedding model encode failed")
         raise
 
-    vectors = vectors.astype(np.float32)
+    vectors = np.vstack(vectors).astype(np.float32)
     vectors = _align_dimension(vectors)
 
     # Sanity check: LaBSE produces dense vectors; very sparse output means

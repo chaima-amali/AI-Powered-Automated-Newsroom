@@ -59,7 +59,7 @@ STAGES: dict[str, tuple[Callable, str]] = {
         "🕷️  Scraper    — RSS feeds + article parsing",
     ),
     "embedding": (
-        lambda: __import__("pipeline.embedding.pipeline", fromlist=["run_embedding_pipeline"]).run_embedding_pipeline(),
+        lambda: __import__("pipeline.embedding.pipeline", fromlist=["run_embedding_pipeline"]).run_embedding_pipeline(process_date="*"),
         "🧠  Embedding  — vectors + DBSCAN clustering",
     ),
     "summarizer": (
