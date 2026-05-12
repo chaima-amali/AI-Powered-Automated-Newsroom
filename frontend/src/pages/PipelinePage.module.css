@@ -1,0 +1,162 @@
+.page { display: flex; flex-direction: column; min-height: 100vh; }
+.main { flex: 1; padding: 40px 0 80px; }
+
+/* ── Header ───────────────────────────────────────── */
+.header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 20px; margin-bottom: 28px;
+}
+.title { font-family: var(--font-serif); font-size: 2rem; font-weight: 700; }
+.sub   { color: var(--ink-3); font-size: .9rem; margin-top: 6px; }
+
+.runAllBtn {
+  background: var(--ink); color: #fff; border: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: .9rem; font-weight: 600;
+  padding: 11px 24px; border-radius: var(--r); white-space: nowrap;
+  transition: background var(--t); flex-shrink: 0; margin-top: 4px;
+}
+.runAllBtn:hover:not(:disabled) { background: var(--ink-2); }
+.runAllBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── API key ──────────────────────────────────────── */
+.keyRow {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper-2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 10px 14px; margin-bottom: 28px;
+  color: var(--ink-4);
+}
+.keyInput {
+  flex: 1; background: none; border: none; outline: none;
+  font-family: var(--font-mono); font-size: .85rem; color: var(--ink-2);
+}
+.keyInput::placeholder { color: var(--ink-4); }
+
+/* ── Layout ───────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+/* ── Stage cards ──────────────────────────────────── */
+.stageList { display: flex; flex-direction: column; gap: 12px; }
+
+.stageCard {
+  background: #fff; border: 1.5px solid var(--border);
+  border-radius: var(--r-lg); padding: 20px 24px;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+.stageCard.running { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.stageCard.done    { border-color: var(--green); }
+.stageCard.failed  { border-color: var(--red); }
+
+.stageTop {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.stageLabel  { display: flex; align-items: center; gap: 10px; }
+.stageIcon   { font-size: 1.3rem; }
+.stageName   { font-weight: 600; font-size: .95rem; }
+.stageRight  { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.stageDesc   { font-size: .8rem; color: var(--ink-3); margin-top: 10px; line-height: 1.5; }
+
+.runBtn {
+  padding: 7px 16px; font-size: .82rem; font-weight: 600;
+  background: var(--accent); color: #fff; border: none; border-radius: var(--r);
+  cursor: pointer; font-family: var(--font-sans); transition: background var(--t);
+  white-space: nowrap;
+}
+.runBtn:hover:not(:disabled) { background: var(--accent-2); }
+.runBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Progress bar */
+.progressBar {
+  margin-top: 12px; height: 3px; background: var(--paper-3);
+  border-radius: 2px; overflow: hidden;
+}
+.progressFill {
+  height: 100%; width: 40%; background: var(--blue);
+  border-radius: 2px;
+  animation: progress 1.6s ease-in-out infinite;
+}
+@keyframes progress {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ── Log panel ────────────────────────────────────── */
+.logPanel {
+  background: #0d0d0d;
+  border-radius: var(--r-xl);
+  padding: 20px;
+  height: 540px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 76px;
+}
+
+.logHeader {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.logTitle {
+  color: #fff; font-size: .875rem; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.sseDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sseLabel { font-size: .72rem; color: rgba(255,255,255,.3); font-family: var(--font-mono); }
+
+.clearBtn {
+  background: rgba(255,255,255,.08); border: none;
+  color: rgba(255,255,255,.4); font-size: .72rem;
+  padding: 4px 10px; border-radius: var(--r);
+  cursor: pointer; font-family: var(--font-mono);
+  transition: background var(--t);
+}
+.clearBtn:hover { background: rgba(255,255,255,.15); color: rgba(255,255,255,.8); }
+
+.logEntries {
+  flex: 1; overflow-y: auto;
+  font-family: var(--font-mono); font-size: .76rem; line-height: 1.75;
+  display: flex; flex-direction: column; gap: 0;
+}
+.logEntries::-webkit-scrollbar { width: 3px; }
+.logEntries::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 2px; }
+
+.logEmpty { color: rgba(255,255,255,.2); font-size: .78rem; padding: 12px 0; }
+.logLine  { color: rgba(255,255,255,.6); display: flex; gap: 10px; }
+.ts       { color: rgba(255,255,255,.25); flex-shrink: 0; }
+
+.logLine.success { color: #86efac; }
+.logLine.error   { color: #fca5a5; }
+.logLine.warn    { color: #fde68a; }
+.logLine.stage   { color: #93c5fd; font-weight: 600; }
+.logLine.info    { color: rgba(255,255,255,.75); }
+
+/* ── Job history ──────────────────────────────────── */
+.history { margin-top: 40px; }
+.historyTitle { font-family: var(--font-serif); font-size: 1.3rem; font-weight: 700; margin-bottom: 16px; }
+
+.historyTable {
+  background: #fff; border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+.tableHead, .tableRow {
+  display: grid;
+  grid-template-columns: 140px 120px 1fr 80px;
+  gap: 12px; padding: 12px 20px;
+}
+.tableHead {
+  background: var(--paper-2); font-size: .75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3);
+}
+.tableRow { border-top: 1px solid var(--border); font-size: .875rem; align-items: center; }
+.tableRow:hover { background: var(--paper); }
+
+.jobType { font-weight: 600; font-family: var(--font-mono); font-size: .82rem; color: var(--ink-2); }
+.jobDate { color: var(--ink-3); font-size: .8rem; }
+.jobDur  { color: var(--ink-4); font-family: var(--font-mono); font-size: .8rem; }
+
+/* ── Footer ───────────────────────────────────────── */
+.footer { background: var(--ink); color: rgba(255,255,255,.3); text-align: center; padding: 20px; font-size: .8rem; }

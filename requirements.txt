@@ -1,0 +1,42 @@
+# ── Web scraping ──────────────────────────────────────────────────────────────
+requests>=2.31.0
+feedparser>=6.0.10
+trafilatura>=1.7.0
+newspaper3k>=0.2.8
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+python-dateutil>=2.8.2
+
+# ── Database ──────────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9.9
+pgvector>=0.2.4
+
+# ── AI / ML ───────────────────────────────────────────────────────────────────
+sentence-transformers>=2.7.0
+transformers>=4.40.0
+torch>=2.2.0
+scikit-learn>=1.4.0
+numpy>=1.26.0
+langdetect>=1.0.9
+Pillow>=10.3.0            # image resizing
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+
+# ── Scheduler ────────────────────────────────────────────────────────────────
+APScheduler>=3.10.4
+pytz>=2024.1
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1
+
+# ── LLM API client ───────────────────────────────────────────────────────────
+# Note: We call OpenRouter and Groq HTTP APIs directly via requests.
+# No direct openai or groq package needed; they're accessed via HTTP.
+# If you want Ollama/local LLMs later, install those packages explicitly.
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+urllib3>=2.2.0
