@@ -27,22 +27,18 @@ logger = logging.getLogger(__name__)
 # Avoid TensorFlow import path on Windows when only PyTorch embeddings are needed.
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 # ── Model configuration ───────────────────────────────────────────────────────
 # LaBSE is the recommended model for Arabic/French/English cross-lingual tasks.
-# Enforce LaBSE for production embedding/clustering to ensure consistent
-# multilingual behaviour. If an env var is set to a different model we log
-# a warning and override it to avoid accidental runs with weaker models.
-_ENV_MODEL_NAME = os.environ.get("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2").strip()
-_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
-if _ENV_MODEL_NAME and _ENV_MODEL_NAME.lower() != _MODEL_NAME.lower():
-    logger = logging.getLogger(__name__)
-    logger.warning(
-        "EMBEDDING_MODEL_NAME in environment is '%s' but pipeline enforces '%s' for consistent clustering. Overriding.",
-        _ENV_MODEL_NAME,
-        _MODEL_NAME,
-    )
-_DB_VECTOR_DIM: int = int(os.environ.get("EMBEDDING_VECTOR_DIM", "384"))
+_MODEL_NAME: str = os.environ.get(
+    "EMBEDDING_MODEL_NAME", "sentence-transformers/LaBSE"
+).strip()
+_DB_VECTOR_DIM: int = int(os.environ.get("EMBEDDING_VECTOR_DIM", "768"))
 _BACKEND: str = (
     os.environ.get("EMBEDDING_BACKEND", "sentence-transformers").strip().lower()
 )
@@ -242,25 +238,21 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     model = get_model()
     logger.debug("Encoding %d texts  batch_size=%d", len(texts), batch_size)
 
-    vectors: list[np.ndarray] = []
     try:
-        for text in texts:
-            encoded = model.encode(
-                [text],
-                batch_size=1,
-                show_progress_bar=False,
-                normalize_embeddings=True,  # L2-normalise → cosine_sim == dot product
-                convert_to_numpy=True,
-            )
-            encoded = np.asarray(encoded, dtype=np.float32)
-            if encoded.ndim == 1:
-                encoded = encoded.reshape(1, -1)
-            vectors.append(encoded[0])
+        encoded = model.encode(
+            texts,
+            batch_size=max(1, int(batch_size)),
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
     except Exception:
         logger.exception("Embedding model encode failed")
         raise
 
-    vectors = np.vstack(vectors).astype(np.float32)
+    vectors = np.asarray(encoded, dtype=np.float32)
+    if vectors.ndim == 1:
+        vectors = vectors.reshape(1, -1)
     vectors = _align_dimension(vectors)
 
     # Sanity check: LaBSE produces dense vectors; very sparse output means
