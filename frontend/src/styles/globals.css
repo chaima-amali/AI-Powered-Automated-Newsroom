@@ -1,133 +1,48 @@
-/* ═══════════════════════════════════════════════════════════════
-   NewsDispatch Design System — globals.css
-   Editorial dark-accented aesthetic: ink + paper + crimson
-   ═══════════════════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
 :root {
-  /* Palette */
-  --ink:       #0d0d0d;
-  --ink-2:     #2a2a2a;
-  --ink-3:     #666;
-  --ink-4:     #999;
-  --paper:     #faf9f7;
-  --paper-2:   #f2f0ec;
-  --paper-3:   #e8e5df;
-  --accent:    #c84b31;
-  --accent-2:  #e8683e;
-  --accent-bg: rgba(200,75,49,.08);
-  --gold:      #c9973b;
-  --blue:      #2563eb;
-  --green:     #16a34a;
-  --red:       #dc2626;
-  --border:    #e2dfd8;
-
-  /* Typography */
-  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
-  --font-sans:  'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-mono:  'DM Mono', 'Cascadia Code', 'Fira Code', monospace;
-
-  /* Radii */
-  --r:    6px;
-  --r-lg: 12px;
-  --r-xl: 20px;
-
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
-  --shadow:    0 4px 16px rgba(0,0,0,.1);
-  --shadow-lg: 0 16px 48px rgba(0,0,0,.14);
-  --shadow-xl: 0 32px 80px rgba(0,0,0,.18);
-
-  /* Transitions */
-  --ease: cubic-bezier(.25,.46,.45,.94);
-  --t: .18s;
+  --primary:       #4F46E5;
+  --primary-dark:  #3730A3;
+  --primary-light: #818CF8;
+  --accent:        #7C3AED;
+  --bg-page:       #FFFFFF;
+  --bg-card:       #FFFFFF;
+  --bg-dark:       #2D2A6E;
+  --bg-footer:     #1A1847;
+  --text-dark:     #1E1B4B;
+  --text-body:     #4B5563;
+  --text-muted:    #9CA3AF;
+  --text-white:    #FFFFFF;
+  --border:        #E5E7EB;
+  --border-light:  #EDE9FE;
+  --radius-sm:     8px;
+  --radius-md:     12px;
+  --radius-lg:     20px;
+  --radius-xl:     24px;
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.07);
+  --shadow-md:     0 4px 16px rgba(79,70,229,0.12);
+  --shadow-lg:     0 8px 32px rgba(79,70,229,0.18);
+  --font-display:  'Playfair Display', sans-serif;
+  --font-body:     'DM Sans', sans-serif;
 }
 
-/* ── Reset ─────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html {
-  font-size: 16px;
-  scroll-behavior: smooth;
-  -webkit-text-size-adjust: 100%;
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
+
+html { scroll-behavior: smooth; }
 
 body {
-  font-family: var(--font-sans);
-  background: var(--paper);
-  color: var(--ink);
+  font-family: var(--font-body);
+  background: #FFFFFF;
+  color: var(--text-dark);
   line-height: 1.6;
-  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-img, video { display: block; max-width: 100%; }
-a { color: inherit; }
-button { font-family: inherit; }
-input, textarea, select { font-family: inherit; }
-
-/* ── Scrollbar ────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--paper-3); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
-
-/* ── Layout ───────────────────────────────────────────────── */
-.container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
-.container-sm { max-width: 760px; margin: 0 auto; padding: 0 24px; }
-
-/* ── Typography ───────────────────────────────────────────── */
-.serif { font-family: var(--font-serif); }
-.mono  { font-family: var(--font-mono); }
-
-/* ── Utility ──────────────────────────────────────────────── */
-.sr-only {
-  position: absolute; width: 1px; height: 1px;
-  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
-}
-
-/* ── Animations ───────────────────────────────────────────── */
-@keyframes fadeIn    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes shimmer   { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes spin      { to { transform: rotate(360deg); } }
-@keyframes pulse     { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-
-.fade-in { animation: fadeIn .35s var(--ease) both; }
-
-/* ── Skeleton loader ──────────────────────────────────────── */
-.skeleton {
-  background: linear-gradient(90deg, var(--paper-2) 25%, var(--paper-3) 50%, var(--paper-2) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s infinite;
-  border-radius: var(--r);
-}
-
-/* ── Status dots ──────────────────────────────────────────── */
-.status-dot {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: .78rem; font-weight: 500; font-family: var(--font-mono);
-  text-transform: uppercase; letter-spacing: .04em;
-}
-.status-dot::before {
-  content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
-.status-dot.idle::before     { background: var(--paper-3); border: 1.5px solid var(--ink-4); }
-.status-dot.pending::before  { background: var(--gold); }
-.status-dot.running::before  { background: var(--blue); animation: pulse 1.2s infinite; }
-.status-dot.done::before     { background: var(--green); }
-.status-dot.failed::before   { background: var(--red); }
-
-/* ── Notification toast ───────────────────────────────────── */
-.toast {
-  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-  background: var(--ink); color: #fff; border-radius: var(--r-lg);
-  padding: 14px 20px; font-size: .9rem; font-weight: 500;
-  box-shadow: var(--shadow-xl); max-width: 340px;
-  animation: slideDown .25s var(--ease) both;
-}
-.toast.success { border-left: 3px solid var(--green); }
-.toast.error   { border-left: 3px solid var(--red); }
-.toast.info    { border-left: 3px solid var(--blue); }
+a   { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: var(--font-body); }
+img { max-width: 100%; display: block; }

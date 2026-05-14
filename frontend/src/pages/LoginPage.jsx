@@ -1,76 +1,107 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import logo from '../assets/logo.png';
+import Navbar from '../components/Navbar';
 import styles from './AuthPage.module.css';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const navigate  = useNavigate();
-  const location  = useLocation();
-  const from      = location.state?.from?.pathname || '/dashboard';
+  const navigate = useNavigate();
+  const [form, setForm]   = useState({ email: '', password: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [error,    setError]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+  const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  async function handleSubmit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setLoading(true);
-    const result = await login(email.trim(), password);
-    setLoading(false);
+    setError('');
+    setLoading(true);
+    const result = await login(form.email, form.password);
     if (result.success) {
-      navigate(from, { replace: true });
+      navigate('/dashboard', { replace: true });
     } else {
-      setError(result.error || 'Invalid email or password.');
+      setError(result.error);
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className={styles.page}>
-      <div className={styles.card}>
-        <Link to="/" className={styles.logoWrap}>
-          <span className={styles.logoDot} />
-          NewsDispatch
-        </Link>
+      {/* Inline minimal nav */}
+      <Navbar />
 
-        <h1 className={styles.title}>Welcome back</h1>
-        <p className={styles.sub}>Sign in to your account</p>
+      <div className={styles.center}>
+        <div className={styles.card}>
+          {/* Left brand panel */}
+          <div className={styles.brandPanel}>
+            <div className={styles.brandInner}>
+              <div className={styles.brandLogo}>
+                <img src={logo} alt="News Dispatch" className={styles.brandLogoImg} />
+              </div>
+            </div>
+          </div>
 
-        {/* Demo hint */}
-        <div className={styles.demoHint}>
-          <strong>Demo:</strong>{' '}
-          <code>alex@newsdispatch.com</code> / <code>news1234</code>
+          {/* Right form panel */}
+          <div className={styles.formPanel}>
+            <h2 className={styles.formTitle}>Welcome Back</h2>
+            <p className={styles.formSubtitle}>Sign in to your News Dispatch account</p>
+
+            {/* Hint box */}
+            <div className={styles.hintBox}>
+              <span className={styles.hintIcon}>💡</span>
+              <div>
+                <div className={styles.hintTitle}>Demo credentials</div>
+                <div className={styles.hintCreds}>alex@newsdispatch.com</div>
+                <div className={styles.hintCreds}>news1234</div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} className={styles.form}>
+              {error && <div className={styles.errorMsg}>{error}</div>}
+
+              <div className={styles.field}>
+                <label className={styles.label}>Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handle}
+                  className={styles.input}
+                  placeholder="your@email.com"
+                  required
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={form.password}
+                  onChange={handle}
+                  className={styles.input}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                />
+                <div className={styles.forgotWrap}>
+                  <Link to="/forgot-password" className={styles.forgotLink}>Forget Password?</Link>
+                </div>
+              </div>
+
+              <button type="submit" className={styles.submitBtn} disabled={loading}>
+                {loading ? 'Signing in…' : 'Login'}
+              </button>
+
+              <p className={styles.switchText}>
+                Don't have an account? <Link to="/signup" className={styles.switchLink}>Sign Up</Link>
+              </p>
+            </form>
+          </div>
         </div>
-
-        {error && <div className={styles.errorBox}>{error}</div>}
-
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <div className={styles.field}>
-            <label htmlFor="email">Email</label>
-            <input
-              id="email" type="email" autoComplete="email"
-              placeholder="your@email.com" required
-              value={email} onChange={e => setEmail(e.target.value)}
-            />
-          </div>
-          <div className={styles.field}>
-            <label htmlFor="password">Password</label>
-            <input
-              id="password" type="password" autoComplete="current-password"
-              placeholder="••••••••" required
-              value={password} onChange={e => setPassword(e.target.value)}
-            />
-          </div>
-          <button type="submit" className={styles.submit} disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </form>
-
-        <p className={styles.switchLine}>
-          Don't have an account?{' '}
-          <Link to="/signup" className={styles.switchLink}>Create one</Link>
-        </p>
       </div>
     </div>
   );

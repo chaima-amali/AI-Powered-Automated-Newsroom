@@ -1,197 +1,193 @@
-import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Navbar       from '../components/Navbar';
-import ArticleCard  from '../components/ArticleCard';
-import { useArticles, useHealth } from '../hooks/useData';
-import { useAuth }  from '../context/AuthContext';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { getToken } from '../services/auth';
+import NewsCard from '../components/NewsCard';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
 import styles from './DashboardPage.module.css';
 
-const CATEGORIES = ['All', 'Politique', 'Économie', 'Sport', 'Société', 'International', 'Culture', 'Santé'];
+const CATEGORIES = ['All', 'Business', 'Technology', 'Sport', 'Politics'];
+const TODAY = new Date().toISOString().split('T')[0];
 
-function fmt(n) {
-  if (n == null) return '—';
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}
+const INFLUENCING = [
+  { tag: 'Business',    title: 'Global Markets Rally Amid Economic Recovery Signs',     time: 'Apr 27 2024', readTime: 5, image: 'https://picsum.photos/seed/inf1/400/240' },
+  { tag: 'Technology',  title: 'AI Breakthroughs Reshape the Future of Work and Jobs',  time: 'Apr 27 2024', readTime: 4, image: 'https://picsum.photos/seed/inf2/400/240' },
+  { tag: 'Sport',       title: 'Champions League Semi-Finals Deliver Record Viewership', time: 'Apr 27 2024', readTime: 3, image: 'https://picsum.photos/seed/inf3/400/240' },
+];
 
-function useDebounce(fn, delay) {
-  let timer;
-  return useCallback((...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  }, [fn, delay]);
-}
+const LATEST = [
+  { tag: 'Business',   title: 'Federal Reserve Signals Potential Rate Cuts in Late 2024',      time: 'Apr 27 2024', readTime: 5, image: 'https://picsum.photos/seed/lat1/400/240' },
+  { tag: 'Politics',   title: 'Global Leaders Convene for Emergency Climate Summit',           time: 'Apr 26 2024', readTime: 4, image: 'https://picsum.photos/seed/lat2/400/240' },
+  { tag: 'Technology', title: 'Apple Unveils New AR Headset Features at Developer Conference', time: 'Apr 26 2024', readTime: 6, image: 'https://picsum.photos/seed/lat3/400/240' },
+  { tag: 'Sport',      title: 'Algerian Athletes Break Three World Records at European Cup',   time: 'Apr 25 2024', readTime: 3, image: 'https://picsum.photos/seed/lat4/400/240' },
+  { tag: 'Business',   title: 'Oil Prices Surge as OPEC+ Announces Production Cuts',          time: 'Apr 25 2024', readTime: 5, image: 'https://picsum.photos/seed/lat5/400/240' },
+  { tag: 'Politics',   title: 'Senate Passes Landmark Infrastructure Bill with Bipartisan Support', time: 'Apr 24 2024', readTime: 4, image: 'https://picsum.photos/seed/lat6/400/240' },
+];
 
 export default function DashboardPage() {
-  const { user }  = useAuth();
-  const navigate  = useNavigate();
-  const { data: healthData } = useHealth();
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [search, setSearch] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-  const [category, setCategory] = useState('All');
-  const [search,   setSearch]   = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const fetchArticles = async () => {
+    setLoading(true);
+    setError('');
 
-  const { data, loading, error, hasMore, loadMore, pages, total } = useArticles({
-    category: category === 'All' ? '' : category,
-    search,
-  });
+    const token = getToken();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
 
-  // Debounce search
-  const applySearch = useCallback((q) => setSearch(q), []);
-  const debouncedSearch = useCallback((val) => {
-    setSearchInput(val);
-    clearTimeout(window._searchTimer);
-    window._searchTimer = setTimeout(() => applySearch(val), 400);
-  }, [applySearch]);
+    try {
+      const url = new URL('http://localhost:8000/api/v1/articles');
+      url.searchParams.set('page', '1');
+      url.searchParams.set('limit', '100');
+      if (activeCategory !== 'All') {
+        url.searchParams.set('category', activeCategory);
+      }
+      if (search.trim()) {
+        url.searchParams.set('q', search.trim());
+      }
+      if (selectedDate) {
+        url.searchParams.set('date', selectedDate);
+      }
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const firstName = user?.name?.split(' ')[0] || 'there';
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.status === 401) {
+        logout();
+        navigate('/login');
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to fetch articles');
+      const data = await res.json();
+      setArticles(data.data.filter(a => a && a.title));
+    } catch (err) {
+      setError('Failed to load articles');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchArticles();
+  }, [navigate, logout, activeCategory, search, selectedDate]);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/', { replace: true });
+  };
 
   return (
     <div className={styles.page}>
-      <Navbar />
-      <main className={styles.main}>
-        <div className="container">
 
-          {/* ── Hero strip ──────────────────────────────── */}
-          <div className={styles.heroStrip}>
-            <div>
-              <p className={styles.greeting}>{greeting}, {firstName} 👋</p>
-              <h1 className={styles.pageTitle}>Today's Top Stories</h1>
-              <p className={styles.pageSub}>Curated from 16+ Algerian sources, rewritten by AI.</p>
+      {/* ── APP NAVBAR ── */}
+      <Navbar />
+
+      <main className={styles.main}>
+        {/* ── HERO ── */}
+        <section className={styles.hero}>
+          <div className={styles.heroBg} aria-hidden />
+          <div className={styles.heroContent}>
+            <p className={styles.heroGreeting}>Good morning, {user?.name?.split(' ')[0]} 👋</p>
+            <h1 className={styles.heroTitle}>Today's Top Stories</h1>
+            <p className={styles.heroDesc}>Discover the latest news, insights, and stories from around the world, curated for you.</p>
+            <button className={styles.discoverBtn}>Let's Discover</button>
+          </div>
+        </section>
+
+        <div className={styles.content}>
+          {/* Search + Date */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ flex: '1 1 520px', minWidth: '260px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#334155' }}>
+                Search
+              </label>
+              <div className={styles.searchBox}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.searchIcon}>
+                  <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search Articles, Topics or News..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className={styles.searchInput}
+                />
+              </div>
             </div>
-            <button className={styles.pipelineBtn} onClick={() => navigate('/pipeline')}>
-              🔧 Pipeline Monitor
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px', alignItems: 'flex-end' }}>
+              <label style={{ display: 'block', marginBottom: '0', fontSize: '0.9rem', color: '#334155' }}>
+                Date
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={e => setSelectedDate(e.target.value)}
+                className={styles.searchInput}
+                style={{ width: '220px' }}
+              />
+            </div>
+
+            <button type="button" className={styles.filterBtn} onClick={fetchArticles} style={{ minWidth: '100px', height: '42px' }}>
+              Apply
             </button>
           </div>
 
-          {/* ── Stats row ────────────────────────────────── */}
-          <div className={styles.statsRow}>
-            <StatCard val={fmt(healthData?.total_articles)}    label="Articles" icon="📄" />
-            <StatCard val={fmt(healthData?.total_clusters)}     label="Clusters"  icon="🧩" />
-            <StatCard val={fmt(healthData?.published_count)}    label="Published" icon="📰" />
-            <StatCard val={fmt(healthData?.pending_embedding)}  label="Pending"   icon="⏳" />
-          </div>
-
-          {/* ── Search ───────────────────────────────────── */}
-          <div className={styles.searchRow}>
-            <div className={styles.searchWrap}>
-              <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              <input
-                type="text"
-                className={styles.searchInput}
-                placeholder="Search articles, topics…"
-                value={searchInput}
-                onChange={e => debouncedSearch(e.target.value)}
-              />
-              {searchInput && (
-                <button className={styles.clearBtn} onClick={() => { setSearchInput(''); applySearch(''); }}>
-                  ✕
+          {/* Categories */}
+          <div className={styles.section}>
+            <h2 className={styles.sectionTitle}>Categories</h2>
+            <div className={styles.categories}>
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  className={`${styles.catBtn} ${activeCategory === cat ? styles.catActive : ''}`}
+                  onClick={() => setActiveCategory(cat)}
+                >
+                  {cat}
                 </button>
-              )}
-            </div>
-          </div>
-
-          {/* ── Category filters ─────────────────────────── */}
-          <div className={styles.catRow}>
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                className={`${styles.catBtn} ${category === cat ? styles.catActive : ''}`}
-                onClick={() => setCategory(cat)}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Results header ───────────────────────────── */}
-          <div className={styles.resultsHeader}>
-            <h2 className={styles.sectionTitle}>
-              {search ? `Results for "${search}"` : category === 'All' ? 'Latest Stories' : category}
-            </h2>
-            {total > 0 && <span className={styles.totalBadge}>{total} articles</span>}
-          </div>
-
-          {/* ── Grid ─────────────────────────────────────── */}
-          {error ? (
-            <EmptyState
-              icon="⚠️"
-              title="Could not load articles"
-              desc={error}
-              action="Open Pipeline Monitor"
-              onAction={() => navigate('/pipeline')}
-            />
-          ) : loading && data.length === 0 ? (
-            <SkeletonGrid />
-          ) : data.length === 0 ? (
-            <EmptyState
-              icon="📰"
-              title="No articles yet"
-              desc="Run the pipeline to generate articles, or try a different search."
-              action="Open Pipeline Monitor"
-              onAction={() => navigate('/pipeline')}
-            />
-          ) : (
-            <div className={styles.grid}>
-              {data.map((article, i) => (
-                <ArticleCard key={article.id} article={article} featured={i === 0} />
               ))}
             </div>
-          )}
+          </div>
 
-          {/* ── Load more ─────────────────────────────────── */}
-          {hasMore && !loading && (
-            <div className={styles.loadMoreWrap}>
-              <button className={styles.loadMoreBtn} onClick={loadMore}>
-                Load more articles
-              </button>
+          <div className={styles.section}>
+            <h2 className={styles.sectionTitle}>{selectedDate === TODAY ? "Today's Articles" : `Articles for ${new Date(selectedDate).toLocaleDateString()}`}</h2>
+            {loading && <p>Loading...</p>}
+            {error && <p className={styles.error}>{error}</p>}
+            <div className={styles.grid3}>
+              {articles.map((article) => {
+                const category = article.category || 'News';
+                const categoryTag = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+                const articleLink = article.slug || String(article.id);
+                return (
+                  <NewsCard
+                    key={article.id}
+                    tag={categoryTag}
+                    title={article.title}
+                    time={article.generated_at ? new Date(article.generated_at).toLocaleDateString() : article.published_at ? new Date(article.published_at).toLocaleDateString() : 'Today'}
+                    readTime={article.reading_time_min || 5}
+                    image={article.cover_image_url || undefined}
+                    provider={article.provider_name}
+                    onRead={() => navigate(`/article/${articleLink}`)}
+                  />
+                );
+              })}
             </div>
-          )}
-          {loading && data.length > 0 && (
-            <div className={styles.loadMoreWrap}>
-              <div className={styles.spinner} />
-            </div>
-          )}
+          </div>
         </div>
       </main>
-      <footer className={styles.footer}>© 2025 NewsDispatch</footer>
-    </div>
-  );
-}
 
-function StatCard({ val, label, icon }) {
-  return (
-    <div className={styles.statCard}>
-      <span className={styles.statIcon}>{icon}</span>
-      <span className={styles.statVal}>{val ?? '—'}</span>
-      <span className={styles.statLbl}>{label}</span>
-    </div>
-  );
-}
-
-function SkeletonGrid() {
-  return (
-    <div className={styles.grid}>
-      {Array(6).fill(0).map((_, i) => (
-        <div key={i} className={`${styles.skeletonCard} skeleton`} />
-      ))}
-    </div>
-  );
-}
-
-function EmptyState({ icon, title, desc, action, onAction }) {
-  return (
-    <div className={styles.emptyState}>
-      <div className={styles.emptyIcon}>{icon}</div>
-      <h3 className={styles.emptyTitle}>{title}</h3>
-      <p className={styles.emptyDesc}>{desc}</p>
-      {action && (
-        <button className={styles.emptyAction} onClick={onAction}>{action}</button>
-      )}
+      <Footer />
     </div>
   );
 }
