@@ -1,9 +1,8 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import styles from './DashboardPage.module.css'; // Reuse styles
+import styles from './ProfilePage.module.css';
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -21,18 +20,42 @@ export default function ProfilePage() {
       <Navbar />
 
       <main className={styles.main}>
-        <div className={styles.content}>
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>Profile</h2>
-            <div style={{ padding: '20px', background: '#f9f9f9', borderRadius: '8px' }}>
-              <p><strong>Name:</strong> {user.name}</p>
-              <p><strong>Email:</strong> {user.email}</p>
-              <p><strong>Joined:</strong> {user.joined_date}</p>
-              <p><strong>Preferences:</strong> {user.preferences?.join(', ')}</p>
-              <button onClick={handleLogout} style={{ marginTop: '20px', padding: '10px 20px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>
-                Logout
-              </button>
+        <div className={styles.profileCard}>
+          <div className={styles.header}>
+            <div className={styles.avatar}>{user.name?.charAt(0)?.toUpperCase() || 'U'}</div>
+            <div>
+              <h1>{user.name}</h1>
+              <p className={styles.email}>{user.email}</p>
+              <p className={styles.subtitle}>Member since {user.joined_date || 'N/A'}</p>
             </div>
+          </div>
+
+          <div className={styles.detailsGrid}>
+            <div className={styles.detailItem}>
+              <span>Full Name</span>
+              <strong>{user.name}</strong>
+            </div>
+            <div className={styles.detailItem}>
+              <span>Email Address</span>
+              <strong>{user.email}</strong>
+            </div>
+            <div className={styles.detailItem}>
+              <span>Preferences</span>
+              <strong>{user.preferences?.join(', ') || 'None selected'}</strong>
+            </div>
+            <div className={styles.detailItem}>
+              <span>Role</span>
+              <strong>{user.role || 'Reader'}</strong>
+            </div>
+          </div>
+
+          <div className={styles.actions}>
+            <button className={styles.primaryBtn} onClick={() => navigate('/settings')}>
+              Edit Settings
+            </button>
+            <button className={styles.secondaryBtn} onClick={handleLogout}>
+              Logout
+            </button>
           </div>
         </div>
       </main>

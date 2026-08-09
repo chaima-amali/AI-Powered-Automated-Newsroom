@@ -71,7 +71,7 @@
 }
 
 .brandName {
-  font-family: var(--font-display);
+  font-family: var(--legacy-font-display);
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--primary);
@@ -91,7 +91,7 @@
 }
 
 .formTitle {
-  font-family: var(--font-display);
+  font-family: var(--legacy-font-display);
   font-size: 1.5rem;
   font-weight: 700;
   color: white;
@@ -129,7 +129,7 @@
   padding: 10px 14px;
   font-size: 0.85rem;
   color: white;
-  font-family: var(--font-body);
+  font-family: var(--legacy-font-body);
   outline: none;
   transition: border-color 0.2s, background 0.2s;
 }
@@ -162,7 +162,7 @@
   padding: 12px;
   font-size: 0.9rem;
   font-weight: 700;
-  font-family: var(--font-body);
+  font-family: var(--legacy-font-body);
   margin-top: 4px;
   transition: background 0.2s, transform 0.15s;
 }

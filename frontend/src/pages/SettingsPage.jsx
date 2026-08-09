@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import styles from './DashboardPage.module.css'; // Reuse styles
+import styles from './SettingsPage.module.css';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -28,25 +28,37 @@ export default function SettingsPage() {
       <Navbar />
 
       <main className={styles.main}>
-        <div className={styles.content}>
+        <div className={styles.settingsCard}>
+          <div className={styles.header}>
+            <div>
+              <h1>Settings</h1>
+              <p className={styles.subtitle}>Customize your preferences and account options.</p>
+            </div>
+          </div>
+
           <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>Settings</h2>
-            <div style={{ padding: '20px', background: '#f9f9f9', borderRadius: '8px' }}>
-              <h3>Preferences</h3>
+            <h2>Preferences</h2>
+            <div className={styles.preferencesGrid}>
               {['Technology', 'Business', 'Politics', 'Sport'].map(pref => (
-                <label key={pref} style={{ display: 'block', margin: '10px 0' }}>
+                <label key={pref} className={styles.prefItem}>
                   <input
                     type="checkbox"
                     checked={preferences.includes(pref)}
                     onChange={() => handlePreferenceChange(pref)}
                   />
-                  {pref}
+                  <span>{pref}</span>
                 </label>
               ))}
-              <button onClick={saveSettings} style={{ marginTop: '20px', padding: '10px 20px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}>
-                Save Settings
-              </button>
             </div>
+          </div>
+
+          <div className={styles.actions}>
+            <button className={styles.primaryBtn} onClick={saveSettings}>
+              Save Settings
+            </button>
+            <button className={styles.secondaryBtn} onClick={() => navigate('/profile')}>
+              Back to Profile
+            </button>
           </div>
         </div>
       </main>

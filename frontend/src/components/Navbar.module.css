@@ -1,82 +1,187 @@
 .navbar {
   position: sticky;
-  top: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 16px;
-}
-
-.navbar::before {
-  content: '';
-  position: absolute;
   top: 0;
-  left: 16px;
-  right: 16px;
-  bottom: 0;
-  background: #ffffff;
-  border-radius: 24px;
-  z-index: -1;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  background-color: var(--bg-main);
+  padding: 16px 24px;
 }
 
 .navContainer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 32px;
-  gap: 100px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
+/* Logo */
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
 }
 
 .logoIcon {
-  height: 50px;
-  width: auto;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logoText {
   font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--primary);
-  letter-spacing: -0.02em;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-dark);
 }
 
-.links {
+/* Links (Center) */
+.linksContainer {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.linksPill {
   display: flex;
   align-items: center;
-  gap: 35px;
+  background-color: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-pill);
+  padding: 4px;
 }
 
 .link {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-body);
-  transition: color 0.2s;
+  padding: 8px 20px;
+  border-radius: var(--radius-pill);
+  transition: all 0.2s ease;
 }
 
-.link:hover, .link.active {
+.link:hover {
   color: var(--primary);
 }
 
-.ctaBtn {
-  background: var(--primary-dark);
+.link.active {
+  background-color: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
+/* Actions (Right) */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  width: 240px;
+}
+
+.searchBar svg {
+  color: var(--text-muted);
+}
+
+.searchBar input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--text-dark);
+  width: 100%;
+}
+
+.searchBar input::placeholder {
+  color: var(--text-muted);
+}
+
+.searchClearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.searchClearBtn:hover {
+  color: #EF4444;
+}
+
+.iconBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  color: var(--text-body);
+  transition: background-color 0.2s;
+}
+
+.iconBtn:hover {
+  background-color: var(--bg-card);
+  color: var(--primary);
+}
+
+.notificationDot {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  background-color: #EF4444;
+  /* Red dot */
+  border-radius: 50%;
+  border: 2px solid var(--bg-main);
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--primary);
   color: white;
-  padding: 8px 30px;
-  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-family: var(--font-display);
+  cursor: pointer;
+}
+
+.ctaBtn {
+  background: var(--primary);
+  color: white;
+  padding: 10px 24px;
+  border-radius: var(--radius-pill);
   font-size: 0.875rem;
   font-weight: 600;
   transition: background 0.2s, transform 0.15s;
 }
 
 .ctaBtn:hover {
-  background: var(--primary-dark);
+  background: var(--primary-hover);
   transform: translateY(-1px);
 }

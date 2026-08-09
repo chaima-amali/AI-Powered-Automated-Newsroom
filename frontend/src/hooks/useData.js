@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { articles as articleApi, health as healthApi, pipeline as pipelineApi, connectSSE } from '../services/api';
 
 // ── useArticles ───────────────────────────────────────────────────────────────
-export function useArticles({ category, search, language, limit = 9 } = {}) {
+export function useArticles({ category, search, language, date, limit = 9 } = {}) {
   const [data,    setData]    = useState([]);
   const [page,    setPage]    = useState(1);
   const [total,   setTotal]   = useState(0);
@@ -23,6 +23,7 @@ export function useArticles({ category, search, language, limit = 9 } = {}) {
       if (category && category !== 'All') params.category = category;
       if (search)   params.q        = search;
       if (language) params.language = language;
+      if (date)     params.date     = date;
 
       const result = await articleApi.list(params);
       setData(prev => reset ? result.data : [...prev, ...result.data]);
@@ -34,7 +35,7 @@ export function useArticles({ category, search, language, limit = 9 } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [category, search, language, limit]);
+  }, [category, search, language, date, limit]);
 
   // Re-fetch when filters change
   useEffect(() => {

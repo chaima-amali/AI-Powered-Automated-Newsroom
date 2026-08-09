@@ -1,13 +1,15 @@
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getToken } from '../services/auth';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import styles from './ArticlePage.module.css';
+import { cleanText } from '../utils/cleanText';
 
 export default function ArticlePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { slug } = useParams();
   const { logout } = useAuth();
   const [article, setArticle] = useState(null);
@@ -56,7 +58,7 @@ export default function ArticlePage() {
 
       <main className={styles.main}>
         <div className={styles.container}>
-          <button className={styles.backBtn} onClick={() => navigate('/dashboard')}>
+          <button className={styles.backBtn} onClick={() => navigate(location.search ? `/dashboard${location.search}` : '/dashboard')}>
             ← Back to News
           </button>
 
@@ -91,29 +93,31 @@ export default function ArticlePage() {
 
             {/* Meta */}
             <div className={styles.meta}>
-              <span>📅 Today</span>
+              <span>📅 {article.published_at ? new Date(article.published_at).toLocaleDateString() : 'Today'}</span>
               <span>·</span>
-              <span>⏱ 5 min Read</span>
+              <span>⏱ {article.reading_time_min || 5} min Read</span>
             </div>
 
             {/* Hero Image */}
-            <div className={styles.heroImage}>
-              <img
-                src="https://picsum.photos/seed/article-hero/800/400"
-                alt={article.title}
-              />
-            </div>
+            { (article.cover_image_url || article.image_url) && (
+              <div className={styles.heroImage}>
+                <img
+                  src={article.cover_image_url || article.image_url}
+                  alt={article.title}
+                />
+              </div>
+            ) }
 
             {/* Highlighted Quote */}
             {article.excerpt && (
               <blockquote className={styles.quote}>
-                {article.excerpt}
+                {cleanText(article.excerpt)}
               </blockquote>
             )}
 
             {/* Body */}
             <div className={styles.body}>
-              <p>{article.body || article.raw_summary}</p>
+              <p>{cleanText(article.body || article.raw_summary)}</p>
             </div>
           </article>
         </div>

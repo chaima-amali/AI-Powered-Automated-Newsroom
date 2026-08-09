@@ -270,6 +270,14 @@ def _scrape_and_store(entry: dict, source: dict) -> Optional[object]:
             for k in ("title", "author", "published_at", "image_url", "tags"):
                 if not article.get(k) and entry.get(k):
                     article[k] = entry[k]
+        
+        logger.warning("DEBUG [%s] status=%s content_len=%s error=%s",
+            url[:80], article.get('scrape_status'),
+            len(article.get('content') or ''),
+            article.get('error_message'))
+
+        if article.get("scrape_status") == "failed":
+            logger.warning("Extract failed [%s]: %s", url, article.get("error_message"))
 
         content = article.get("content") or ""
         if not article.get("title"):
@@ -292,7 +300,7 @@ def _scrape_and_store(entry: dict, source: dict) -> Optional[object]:
         return result  # (int, str|None) or None if duplicate/error
 
     except Exception as e:
-        logger.warning("Scrape error [%s]: %s", url, e)
+        logger.warning("Scrape error [%s]: %s", url, e, exc_info=True)
         return None
 
 

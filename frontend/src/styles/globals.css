@@ -1,29 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
 :root {
-  --primary:       #4F46E5;
-  --primary-dark:  #3730A3;
-  --primary-light: #818CF8;
-  --accent:        #7C3AED;
-  --bg-page:       #FFFFFF;
+  /* Brand Colors */
+  --primary:       #7C3AED;
+  --primary-hover: #6D28D9;
+  --bg-main:       #F5F5FA;
   --bg-card:       #FFFFFF;
-  --bg-dark:       #2D2A6E;
-  --bg-footer:     #1A1847;
-  --text-dark:     #1E1B4B;
+  
+  /* Text Colors */
+  --text-dark:     #171124;
   --text-body:     #4B5563;
-  --text-muted:    #9CA3AF;
-  --text-white:    #FFFFFF;
-  --border:        #E5E7EB;
-  --border-light:  #EDE9FE;
+  --text-muted:    #8B95A5;
+  --text-light:    #FFFFFF;
+  
+  /* Category Colors */
+  --cat-business:  #E67E22;
+  --cat-tech:      #8B5CF6;
+  --cat-sport:     #D35400;
+  --cat-politics:  #1A202C;
+  --cat-science:   #059669;
+  --cat-culture:   #7C3AED;
+  --cat-climate:   #059669;
+  
+  /* UI Elements */
+  --border:        #E2E4EB;
+  --border-light:  #F3F4F6;
   --radius-sm:     8px;
   --radius-md:     12px;
   --radius-lg:     20px;
   --radius-xl:     24px;
-  --shadow-sm:     0 1px 3px rgba(0,0,0,0.07);
-  --shadow-md:     0 4px 16px rgba(79,70,229,0.12);
-  --shadow-lg:     0 8px 32px rgba(79,70,229,0.18);
-  --font-display:  'Playfair Display', sans-serif;
-  --font-body:     'DM Sans', sans-serif;
+  --radius-pill:   999px;
+  
+  /* Shadows */
+  --shadow-sm:     0 2px 8px rgba(0,0,0,0.04);
+  --shadow-md:     0 8px 24px rgba(0,0,0,0.06);
+  --shadow-lg:     0 12px 32px rgba(124, 58, 237, 0.12);
+  
+  /* Typography */
+  --font-display:  'Outfit', sans-serif;
+  --font-body:     'Inter', sans-serif;
+
+  /* --- LEGACY VARIABLES FOR AUTH PAGES --- */
+  --primary-dark:  #3730A3;
+  --primary-light: #818CF8;
+  --bg-dark:       #2D2A6E;
+  --bg-page:       #FFFFFF;
+  --bg-footer:     #1A1847;
+  --text-white:    #FFFFFF;
+  --legacy-font-display: 'Playfair Display', serif;
+  --legacy-font-body: 'DM Sans', sans-serif;
 }
 
 *, *::before, *::after {
@@ -36,13 +62,34 @@ html { scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-body);
-  background: #FFFFFF;
+  background: var(--bg-main);
   color: var(--text-dark);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-a   { text-decoration: none; color: inherit; }
-button { cursor: pointer; font-family: var(--font-body); }
+a { text-decoration: none; color: inherit; }
+button { 
+  cursor: pointer; 
+  font-family: var(--font-body); 
+  border: none;
+  background: none;
+}
 img { max-width: 100%; display: block; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}

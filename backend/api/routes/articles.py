@@ -22,11 +22,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from datetime import datetime
 
 from db.connection import get_cursor, has_db_settings
+from .auth import get_current_user
 
 router = APIRouter(prefix="/articles", tags=["Articles"])
 
@@ -39,10 +40,12 @@ class ArticleSummary(BaseModel):
     slug:             Optional[str] = None
     excerpt:          Optional[str] = None
     cover_image_url:  Optional[str] = None
+    image_url:        Optional[str] = None
     category:         Optional[str] = None
     tags:             Optional[list[str]] = None
     language:         Optional[str] = None
     reading_time_min: Optional[int] = None
+    generated_at:     Optional[datetime] = None
     published_at:     Optional[datetime] = None
 
     class Config:
@@ -89,6 +92,7 @@ def list_articles(
     category: Optional[str] = None,
     language: Optional[str] = None,
     q:        Optional[str] = None,
+    date:     Optional[str] = None,
 ):
     """
     Paginated list of published articles with optional filters.
@@ -97,7 +101,7 @@ def list_articles(
     if not has_db_settings():
         _db_unavailable()
 
-    conditions: list[str] = ["status = 'published'"]
+    conditions: list[str] = ["status IN ('published', 'draft', 'review')"]
     params: list = []
 
     if category:
@@ -112,6 +116,9 @@ def list_articles(
             "@@ plainto_tsquery('simple', %s)"
         )
         params.append(q.strip())
+    if date:
+        conditions.append("DATE(generated_at) = %s")
+        params.append(date)
 
     where  = "WHERE " + " AND ".join(conditions)
     offset = (page - 1) * limit
@@ -122,9 +129,9 @@ def list_articles(
 
         cur.execute(
             f"""SELECT id, title, slug, excerpt, cover_image_url, category, tags,
-                       language, reading_time_min, published_at
+                       language, reading_time_min, generated_at, published_at
                 FROM published_articles {where}
-               ORDER BY published_at DESC NULLS LAST
+               ORDER BY cover_image_url IS NULL ASC, generated_at DESC NULLS LAST
                LIMIT %s OFFSET %s""",
             [*params, limit, offset],
         )
@@ -210,7 +217,7 @@ def latest_articles(
 @router.get("/{slug}", response_model=ArticleFull)
 def get_article(slug: str):
     """
-    Fetch a single published article by slug.
+    Fetch a single published article by slug or numeric ID.
     Also increments view count (best-effort, doesn't fail the request).
     BUG FIX: view_count update no longer risks starving the connection pool.
     """
@@ -218,14 +225,24 @@ def get_article(slug: str):
         _db_unavailable()
 
     with get_cursor(dict_cursor=True) as cur:
-        cur.execute(
-            """SELECT id, title, slug, excerpt, cover_image_url, category, tags,
-                      language, reading_time_min, published_at, body,
-                      seo_title, seo_description, canonical_url, view_count, source_article_ids
-               FROM published_articles
-               WHERE slug = %s AND status = 'published'""",
-            (slug,),
-        )
+        if slug.isdigit():
+            cur.execute(
+                """SELECT id, title, slug, excerpt, cover_image_url, category, tags,
+                          language, reading_time_min, published_at, body,
+                          seo_title, seo_description, canonical_url, view_count, source_article_ids
+                   FROM published_articles
+                   WHERE status IN ('published', 'draft', 'review') AND (slug = %s OR id = %s)""",
+                (slug, int(slug)),
+            )
+        else:
+            cur.execute(
+                """SELECT id, title, slug, excerpt, cover_image_url, category, tags,
+                          language, reading_time_min, published_at, body,
+                          seo_title, seo_description, canonical_url, view_count, source_article_ids
+                   FROM published_articles
+                   WHERE status IN ('published', 'draft', 'review') AND slug = %s""",
+                (slug,),
+            )
         row = cur.fetchone()
 
         if not row:
@@ -234,8 +251,8 @@ def get_article(slug: str):
         # BUG FIX: increment view_count in the same connection/transaction
         try:
             cur.execute(
-                "UPDATE published_articles SET view_count = view_count + 1 WHERE slug = %s",
-                (slug,),
+                "UPDATE published_articles SET view_count = view_count + 1 WHERE id = %s",
+                (row['id'],),
             )
         except Exception:
             pass  # best-effort — never fail the read because of this

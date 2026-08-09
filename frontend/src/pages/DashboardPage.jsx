@@ -1,192 +1,272 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { getToken } from '../services/auth';
-import NewsCard from '../components/NewsCard';
+import { useSearchParams } from 'react-router-dom';
+import { useArticles } from '../hooks/useData';
 import Navbar from '../components/Navbar';
+import ArticleCard from '../components/ArticleCard';
+import TopStorySection from '../components/TopStorySection';
+import MostInfluencingSection from '../components/MostInfluencingSection';
+import LatestNewsSection from '../components/LatestNewsSection';
+import OpinionSection from '../components/OpinionSection';
 import Footer from '../components/Footer';
 import styles from './DashboardPage.module.css';
+import { cleanText } from '../utils/cleanText';
 
-const CATEGORIES = ['All', 'Business', 'Technology', 'Sport', 'Politics'];
-const TODAY = new Date().toISOString().split('T')[0];
 
-const INFLUENCING = [
-  { tag: 'Business',    title: 'Global Markets Rally Amid Economic Recovery Signs',     time: 'Apr 27 2024', readTime: 5, image: 'https://picsum.photos/seed/inf1/400/240' },
-  { tag: 'Technology',  title: 'AI Breakthroughs Reshape the Future of Work and Jobs',  time: 'Apr 27 2024', readTime: 4, image: 'https://picsum.photos/seed/inf2/400/240' },
-  { tag: 'Sport',       title: 'Champions League Semi-Finals Deliver Record Viewership', time: 'Apr 27 2024', readTime: 3, image: 'https://picsum.photos/seed/inf3/400/240' },
-];
+// Helper to format timestamps to relative time strings
+function getRelativeTime(dateString) {
+  if (!dateString) return 'Just now';
+  const diff = Date.now() - new Date(dateString).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (hours < 1) return 'Just now';
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
-const LATEST = [
-  { tag: 'Business',   title: 'Federal Reserve Signals Potential Rate Cuts in Late 2024',      time: 'Apr 27 2024', readTime: 5, image: 'https://picsum.photos/seed/lat1/400/240' },
-  { tag: 'Politics',   title: 'Global Leaders Convene for Emergency Climate Summit',           time: 'Apr 26 2024', readTime: 4, image: 'https://picsum.photos/seed/lat2/400/240' },
-  { tag: 'Technology', title: 'Apple Unveils New AR Headset Features at Developer Conference', time: 'Apr 26 2024', readTime: 6, image: 'https://picsum.photos/seed/lat3/400/240' },
-  { tag: 'Sport',      title: 'Algerian Athletes Break Three World Records at European Cup',   time: 'Apr 25 2024', readTime: 3, image: 'https://picsum.photos/seed/lat4/400/240' },
-  { tag: 'Business',   title: 'Oil Prices Surge as OPEC+ Announces Production Cuts',          time: 'Apr 25 2024', readTime: 5, image: 'https://picsum.photos/seed/lat5/400/240' },
-  { tag: 'Politics',   title: 'Senate Passes Landmark Infrastructure Bill with Bipartisan Support', time: 'Apr 24 2024', readTime: 4, image: 'https://picsum.photos/seed/lat6/400/240' },
-];
+// Helper to map DB ArticleSummary to the expected visual card format
+function formatArticle(article) {
+  return {
+    id: article.id,
+    tag: (article.category || 'News').toUpperCase(),
+    title: article.title,
+    desc: cleanText(article.excerpt) || '',
+    author: 'Editorial',
+    time: getRelativeTime(article.published_at || article.generated_at),
+    readTime: article.reading_time_min || 5,
+    slug: article.slug,
+    image: article.cover_image_url || article.image_url || null,
+    color: '#1E293B',
+    catColor: '#8B5CF6',
+    // Pass raw fields through so ArticleCard can use them directly
+    published_at: article.published_at,
+    reading_time_min: article.reading_time_min,
+    cover_image_url: article.cover_image_url || article.image_url || null,
+    category: article.category,
+  };
+}
+
+// Helper to get today's date in YYYY-MM-DD format in local timezone
+const getTodayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function DashboardPage() {
-  const [activeCategory, setActiveCategory] = useState('All');
-  const [search, setSearch] = useState('');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [articles, setArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedDate, setSelectedDate] = useState(TODAY);
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  // ── All filter state lives in the URL so it survives "Read More" navigation ──
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const fetchArticles = async () => {
-    setLoading(true);
-    setError('');
+  // activeCategory holds the French DB value (or 'All')
+  const activeCategory = searchParams.get('category') || 'All';
+  const selectedDate   = searchParams.get('date')     || '';   // empty = no date filter
+  const searchQuery    = searchParams.get('q')         || '';
 
-    const token = getToken();
-    if (!token) {
-      navigate('/login');
-      return;
-    }
+  // Fallback toggle stays local — it's a display preference, not a filter
+  const [useFallback, setUseFallback] = useState(true);
 
-    try {
-      const url = new URL('http://localhost:8000/api/v1/articles');
-      url.searchParams.set('page', '1');
-      url.searchParams.set('limit', '100');
-      if (activeCategory !== 'All') {
-        url.searchParams.set('category', activeCategory);
-      }
-      if (search.trim()) {
-        url.searchParams.set('q', search.trim());
-      }
-      if (selectedDate) {
-        url.searchParams.set('date', selectedDate);
-      }
-
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.status === 401) {
-        logout();
-        navigate('/login');
-        return;
-      }
-      if (!res.ok) throw new Error('Failed to fetch articles');
-      const data = await res.json();
-      setArticles(data.data.filter(a => a && a.title));
-    } catch (err) {
-      setError('Failed to load articles');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ── Dynamic categories from backend ──────────────────────────────────────
+  const [categories, setCategories] = useState(['All']);
   useEffect(() => {
-    fetchArticles();
-  }, [navigate, logout, activeCategory, search, selectedDate]);
+    fetch('/api/v1/categories')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        // data = [{ category: 'Actualité', article_count: 5 }, ...]
+        const cats = ['All', ...data.map(c => c.category).filter(Boolean)];
+        setCategories(cats);
+      })
+      .catch(() => {}); // keep default 'All' on error
+  }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/', { replace: true });
+  // ── URL param setters (preserves existing params) ─────────────────────────
+  const setParam = (key, value, defaultValue) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === defaultValue || value == null) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
   };
+
+  // cat is the French DB value from CATEGORIES[].value
+  const handleCategoryChange = (cat) => setParam('category', cat, 'All');
+  const handleDateChange     = (val) => setParam('date', val, '');  // clear when reset
+
+  // ── Data fetching ─────────────────────────────────────────────────────────
+  const { data: articles, loading, error } = useArticles({
+    category: activeCategory,
+    date:     selectedDate  || undefined,  // only sent when user picks a date
+    search:   searchQuery   || undefined,
+    limit:    20,
+  });
+
+  const formattedArticles = articles ? articles.map(formatArticle) : [];
+
+  // Switch to grid view when any filter is active
+  const isFilterActive = !!searchQuery || activeCategory !== 'All';
+
+  // Fallback mock data only in the normal home view
+  const shouldFallback   = !isFilterActive && useFallback && formattedArticles.length === 0;
+  const mainStory        = shouldFallback ? undefined : (formattedArticles[0] || null);
+  const sideStories      = shouldFallback ? undefined : formattedArticles.slice(1, 4);
+
+  // MostInfluencing: use articles 4-8, but if there aren't enough, wrap around from the beginning
+  const influencingStories = shouldFallback ? undefined : (() => {
+    if (formattedArticles.length === 0) return [];
+    const raw = formattedArticles.slice(4, 9);
+    if (raw.length >= 5 || formattedArticles.length < 5) return raw;
+    // pad by cycling through all articles
+    const padded = [...raw];
+    let i = 0;
+    while (padded.length < 5) {
+      padded.push(formattedArticles[i % formattedArticles.length]);
+      i++;
+    }
+    return padded;
+  })();
+
+  // Latest News: use articles from index 9+, but if empty/few, recycle all articles
+  const latestStories = shouldFallback ? undefined : (() => {
+    if (formattedArticles.length === 0) return [];
+    const raw = formattedArticles.slice(9);
+    if (raw.length > 0) return raw;
+    // Not enough articles — reuse all articles so the section is never empty
+    return formattedArticles;
+  })();
 
   return (
     <div className={styles.page}>
-
-      {/* ── APP NAVBAR ── */}
       <Navbar />
 
       <main className={styles.main}>
-        {/* ── HERO ── */}
-        <section className={styles.hero}>
-          <div className={styles.heroBg} aria-hidden />
+        {/* ── HERO SECTION ── */}
+        <section className={styles.heroSection}>
           <div className={styles.heroContent}>
-            <p className={styles.heroGreeting}>Good morning, {user?.name?.split(' ')[0]} 👋</p>
+            <div className={styles.heroGreeting}>FRIDAY, MAY 15 &middot; GOOD MORNING</div>
             <h1 className={styles.heroTitle}>Today's Top Stories</h1>
-            <p className={styles.heroDesc}>Discover the latest news, insights, and stories from around the world, curated for you.</p>
-            <button className={styles.discoverBtn}>Let's Discover</button>
+            <p className={styles.heroDesc}>
+              Discover the latest news, insights and stories from across the world,
+              curated just for you.
+            </p>
+            <div className={styles.heroButtons}>
+              <button className={styles.btnPrimary}>Let's Discover</button>
+              <button className={styles.btnSecondary}>My Bookmarks</button>
+            </div>
           </div>
         </section>
 
-        <div className={styles.content}>
-          {/* Search + Date */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ flex: '1 1 520px', minWidth: '260px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: '#334155' }}>
-                Search
-              </label>
-              <div className={styles.searchBox}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.searchIcon}>
-                  <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search Articles, Topics or News..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className={styles.searchInput}
-                />
-              </div>
-            </div>
+        {/* ── CATEGORIES & DATE PICKER ── */}
+        <div className={styles.categoriesSection}>
+          <div className={styles.categoriesList}>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                className={`${styles.catBtn} ${activeCategory === cat ? styles.catActive : ''}`}
+                onClick={() => handleCategoryChange(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+          <div className={styles.filtersWrapper}>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px', alignItems: 'flex-end' }}>
-              <label style={{ display: 'block', marginBottom: '0', fontSize: '0.9rem', color: '#334155' }}>
-                Date
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={e => setSelectedDate(e.target.value)}
-                className={styles.searchInput}
-                style={{ width: '220px' }}
-              />
-            </div>
-
-            <button type="button" className={styles.filterBtn} onClick={fetchArticles} style={{ minWidth: '100px', height: '42px' }}>
-              Apply
+            <input
+              type="date"
+              className={styles.datePicker}
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              title="Pick a date to filter by date (leave blank for all dates)"
+            />
+            {selectedDate && (
+              <button
+                onClick={() => handleDateChange('')}
+                title="Clear date filter"
+                style={{ marginLeft: '4px', cursor: 'pointer', background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            )}
+            <button className={styles.filterBtn}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+              Filters
             </button>
           </div>
+        </div>
 
-          {/* Categories */}
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>Categories</h2>
-            <div className={styles.categories}>
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  className={`${styles.catBtn} ${activeCategory === cat ? styles.catActive : ''}`}
-                  onClick={() => setActiveCategory(cat)}
-                >
-                  {cat}
-                </button>
-              ))}
+        {/* ── CONTENT SECTIONS ── */}
+        <div className={styles.contentSections}>
+          {error && (
+            <div style={{ color: '#EF4444', backgroundColor: '#FEE2E2', padding: '16px', borderRadius: '8px', marginBottom: '16px', fontWeight: 'bold' }}>
+              Error fetching data: {error}
             </div>
-          </div>
+          )}
+          {loading && <div className={styles.loadingState}>Loading articles...</div>}
 
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>{selectedDate === TODAY ? "Today's Articles" : `Articles for ${new Date(selectedDate).toLocaleDateString()}`}</h2>
-            {loading && <p>Loading...</p>}
-            {error && <p className={styles.error}>{error}</p>}
-            <div className={styles.grid3}>
-              {articles.map((article) => {
-                const category = article.category || 'News';
-                const categoryTag = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
-                const articleLink = article.slug || String(article.id);
-                return (
-                  <NewsCard
-                    key={article.id}
-                    tag={categoryTag}
-                    title={article.title}
-                    time={article.generated_at ? new Date(article.generated_at).toLocaleDateString() : article.published_at ? new Date(article.published_at).toLocaleDateString() : 'Today'}
-                    readTime={article.reading_time_min || 5}
-                    image={article.cover_image_url || undefined}
-                    provider={article.provider_name}
-                    onRead={() => navigate(`/article/${articleLink}`)}
-                  />
-                );
-              })}
-            </div>
-          </div>
+          {/* ── FILTER / SEARCH RESULTS GRID ── */}
+          {isFilterActive && !loading && (
+            <>
+              <div className={styles.resultsHeader}>
+                <span className={styles.resultsCount}>
+                  {searchQuery
+                    ? (formattedArticles.length > 0
+                        ? `${formattedArticles.length} result${formattedArticles.length !== 1 ? 's' : ''} for`
+                        : 'No results for')
+                    : `${formattedArticles.length} article${formattedArticles.length !== 1 ? 's' : ''} in`
+                  }
+                </span>
+                <span className={styles.resultsLabel}>
+                  {searchQuery ? `"${searchQuery}"` : activeCategory}
+                </span>
+                {selectedDate && (
+                  <span className={styles.resultsBadge}>📅 {selectedDate}</span>
+                )}
+              </div>
+
+              {formattedArticles.length > 0 ? (
+                <div className={styles.resultsGrid}>
+                  {formattedArticles.map(a => (
+                    <ArticleCard
+                      key={a.id}
+                      article={{
+                        id:               a.id,
+                        title:            a.title,
+                        slug:             a.slug,
+                        excerpt:          a.desc,
+                        cover_image_url:  a.cover_image_url,
+                        category:         a.category,
+                        reading_time_min: a.reading_time_min,
+                        published_at:     a.published_at,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.emptyState}>
+                  <span>🔍</span>
+                  <p>Try a different search term or category.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── NORMAL HOME VIEW ── */}
+          {!isFilterActive && !loading && (
+            <>
+
+              <TopStorySection mainStory={mainStory} sideStories={sideStories} />
+              <MostInfluencingSection articles={influencingStories} />
+              <LatestNewsSection articles={latestStories} />
+              <OpinionSection />
+            </>
+          )}
         </div>
       </main>
-
       <Footer />
     </div>
   );

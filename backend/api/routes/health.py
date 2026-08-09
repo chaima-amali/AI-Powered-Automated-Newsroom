@@ -66,14 +66,14 @@ def health():
 
 @router.get("/categories", response_model=list[CategoryStat])
 def list_categories():
-    """List all categories with published article counts."""
+    """List all categories with article counts (includes draft/review so filter always works)."""
     if not has_db_settings():
         return []
     with get_cursor(dict_cursor=True) as cur:
         cur.execute(
             """SELECT category, COUNT(*) AS article_count
                FROM published_articles
-               WHERE status='published' AND category IS NOT NULL
+               WHERE status IN ('published', 'draft', 'review') AND category IS NOT NULL
                GROUP BY category ORDER BY article_count DESC"""
         )
         return [CategoryStat(**dict(r)) for r in cur.fetchall()]
